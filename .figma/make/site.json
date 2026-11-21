@@ -1,0 +1,10 @@
+{
+  "description": "Manage diagnostic centre branches, staff, patients, services, pricing, billing and reports with company-wide oversight and consistent branded records.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
