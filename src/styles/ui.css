@@ -306,7 +306,8 @@
 /* ───────────────────────── Popover / menus ───────────────────────── */
 .popover {
   position: fixed;
-  z-index: 90;
+  /* Above dialogs (100) so dropdowns opened inside a modal are visible and usable. */
+  z-index: 115;
   min-width: 220px;
   max-height: min(520px, calc(100vh - 32px));
   overflow: auto;
@@ -703,6 +704,10 @@
   width: min(820px, 100%);
 }
 
+.modal.xl {
+  width: min(1040px, 100%);
+}
+
 .modal-head {
   display: flex;
   align-items: flex-start;
@@ -710,6 +715,11 @@
   gap: 16px;
   padding: 22px 24px 16px;
   border-bottom: 1px solid var(--line);
+}
+
+.modal-titles {
+  flex: 1;
+  min-width: 0;
 }
 
 .modal-head h2 {
@@ -730,6 +740,11 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+/* Sections inside a scrolling dialog keep their natural height (never squeezed or clipped). */
+.modal-body > * {
+  flex-shrink: 0;
 }
 
 .modal-foot {
@@ -777,7 +792,7 @@
 /* ───────────────────────── Info tooltip ───────────────────────── */
 .info-tip {
   position: fixed;
-  z-index: 95;
+  z-index: 116;
   max-width: 280px;
   padding: 10px 12px;
   border-radius: 11px;

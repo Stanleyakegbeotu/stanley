@@ -5,8 +5,10 @@
  * STANLEY Intelligence. Every function keeps money grouped by recorded
  * currency — values in different currencies are never summed together.
  */
-import { ACTIVE_BRANCHES, BRANCHES, DOCTORS, HOSPITALS, SERVICES, getBranch } from "@/data/demo/catalog";
+import { ACTIVE_BRANCHES, BRANCHES, SERVICES, getBranch, servicePrice } from "@/data/company";
 import { DAILY, DATA_START, TODAY, addDays, diffDays, isoDate, parseIso } from "@/data/demo/generator";
+import { LEGACY_HOSPITAL_DIRECTORY, LEGACY_PR_AGENTS, hospitalKey as legacyHospitalKey } from "@/data/legacy";
+import { DEMO_PR_COMMISSION_RATE } from "./businessRules";
 import {
   EXPENSE_CATEGORIES,
   PAYMENT_METHODS,
@@ -292,6 +294,8 @@ export function expenseMix(branchIds: string[], r: DateRange, currency: Currency
 }
 
 export interface ServiceRank {
+  /** Legacy inventory id. */
+  id: number;
   name: string;
   category: string;
   count: number;
@@ -299,20 +303,113 @@ export interface ServiceRank {
 }
 
 export function serviceRanking(branchIds: string[], r: DateRange): ServiceRank[] {
-  const rows: ServiceRank[] = SERVICES.map((s) => ({ name: s.name, category: s.category, count: 0, revenue: {} }));
+  const rows: ServiceRank[] = SERVICES.map((s) => ({ id: s.id, name: s.name, category: s.category, count: 0, revenue: {} }));
   for (const id of branchIds) {
     const branch = getBranch(id);
     if (!branch) continue;
     for (const d of records(id, r)) {
       d.serviceCounts.forEach((count, i) => {
+        if (!count) return;
         rows[i].count += count;
-        add(rows[i].revenue, branch.currency, count * SERVICES[i].price[branch.currency]);
+        add(rows[i].revenue, branch.currency, count * servicePrice(SERVICES[i], branch.currency));
       });
     }
   }
   return rows.sort((a, b) => b.count - a.count);
 }
 
+/* ─────────────── Referrals: real PR agents and hospitals ─────────────── */
+
+const AGENT_BY_ID = new Map(LEGACY_PR_AGENTS.map((a) => [a.id, a]));
+
+export interface AgentRank {
+  id: number;
+  name: string;
+  /** Raw phone as recorded ("N/A" when none on file). */
+  phone: string;
+  /** Original hospital text and its normalised grouping key ("" = unassigned). */
+  hospital: string;
+  hospitalKey: string;
+  branch: Branch;
+  referrals: number;
+  /** Billed value of diagnostics for the agent's referred patients. */
+  revenue: Money;
+  commission: Money;
+}
+
+/** PR agents (referring doctors) ranked by referrals in the period. Only agents with referrals are returned. */
+export function agentRanking(branchIds: string[], r: DateRange): AgentRank[] {
+  const totals = new Map<string, { agentId: number; branch: Branch; referrals: number; revenue: number }>();
+  for (const id of branchIds) {
+    const branch = getBranch(id);
+    if (!branch) continue;
+    for (const d of records(id, r)) {
+      d.referralAgentIds.forEach((agentId, k) => {
+        const key = `${id}:${agentId}`;
+        const t = totals.get(key) ?? { agentId, branch, referrals: 0, revenue: 0 };
+        t.referrals += 1;
+        t.revenue += d.referralRevenue[k];
+        totals.set(key, t);
+      });
+    }
+  }
+  return [...totals.values()]
+    .map((t) => {
+      const a = AGENT_BY_ID.get(t.agentId)!;
+      const c = t.branch.currency;
+      return {
+        id: a.id,
+        name: a.name,
+        phone: a.phone,
+        hospital: a.hospital,
+        hospitalKey: legacyHospitalKey(a.hospital),
+        branch: t.branch,
+        referrals: t.referrals,
+        revenue: { [c]: t.revenue } as Money,
+        commission: { [c]: t.revenue * DEMO_PR_COMMISSION_RATE } as Money,
+      };
+    })
+    .sort((a, b) => b.referrals - a.referrals || a.name.localeCompare(b.name));
+}
+
+export interface HospitalRank {
+  /** Normalised hospital code (grouping key). */
+  key: string;
+  name: string;
+  rawVariants: string[];
+  /** Agents assigned to this hospital (live, from assignments). */
+  agentCount: number;
+  /** Agents assigned to this hospital who referred in the period. */
+  activeAgents: number;
+  branch: Branch;
+  referrals: number;
+  revenue: Money;
+}
+
+/** Hospitals ranked by referrals from their assigned PR agents. Unassigned agents are reported separately. */
+export function hospitalRanking(branchIds: string[], r: DateRange): HospitalRank[] {
+  const byKey = new Map<string, HospitalRank>();
+  for (const a of agentRanking(branchIds, r)) {
+    if (!a.hospitalKey) continue;
+    const entry = LEGACY_HOSPITAL_DIRECTORY.find((h) => h.key === a.hospitalKey);
+    const h =
+      byKey.get(a.hospitalKey) ??
+      ({ key: a.hospitalKey, name: a.hospitalKey, rawVariants: entry?.rawVariants ?? [a.hospital], agentCount: entry?.agentCount ?? 0, activeAgents: 0, branch: a.branch, referrals: 0, revenue: {} } as HospitalRank);
+    h.activeAgents += 1;
+    h.referrals += a.referrals;
+    for (const [c, v] of Object.entries(a.revenue) as [Currency, number][]) add(h.revenue, c, v);
+    byKey.set(a.hospitalKey, h);
+  }
+  return [...byKey.values()].sort((a, b) => b.referrals - a.referrals || a.name.localeCompare(b.name));
+}
+
+/** Referrals from agents with no hospital assigned (kept separate — never guessed into a hospital). */
+export function unassignedReferrals(branchIds: string[], r: DateRange): { referrals: number; agents: number } {
+  const list = agentRanking(branchIds, r).filter((a) => !a.hospitalKey);
+  return { referrals: list.reduce((s, a) => s + a.referrals, 0), agents: list.length };
+}
+
+/** Referring doctors are the legacy PR agents (compatibility view used by Top 5 / reports). */
 export interface ReferrerRank {
   name: string;
   branch: Branch;
@@ -321,35 +418,8 @@ export interface ReferrerRank {
   specialty?: string;
 }
 
-function referrerRanking(list: typeof DOCTORS, branchIds: string[], r: DateRange): ReferrerRank[] {
-  const perBranch = new Map<string, { referrals: number; referredRevenue: number }>();
-  for (const id of branchIds) {
-    let referrals = 0;
-    let referredRevenue = 0;
-    for (const d of records(id, r)) {
-      referrals += d.referrals;
-      referredRevenue += d.patients > 0 ? d.revenue * (d.referrals / d.patients) : 0;
-    }
-    perBranch.set(id, { referrals, referredRevenue });
-  }
-  return list
-    .filter((ref) => perBranch.has(ref.branchId))
-    .map((ref) => {
-      const b = getBranch(ref.branchId)!;
-      const t = perBranch.get(ref.branchId)!;
-      return {
-        name: ref.name,
-        branch: b,
-        specialty: ref.specialty,
-        referrals: Math.round(t.referrals * ref.weight),
-        revenue: { [b.currency]: t.referredRevenue * ref.weight } as Money,
-      };
-    })
-    .sort((a, b) => b.referrals - a.referrals);
-}
-
-export const doctorRanking = (ids: string[], r: DateRange) => referrerRanking(DOCTORS, ids, r);
-export const hospitalRanking = (ids: string[], r: DateRange) => referrerRanking(HOSPITALS, ids, r);
+export const doctorRanking = (ids: string[], r: DateRange): ReferrerRank[] =>
+  agentRanking(ids, r).map((a) => ({ name: a.name, branch: a.branch, referrals: a.referrals, revenue: a.revenue, specialty: a.hospitalKey || "No hospital assigned" }));
 
 /* ─────────────── Branch performance ─────────────── */
 

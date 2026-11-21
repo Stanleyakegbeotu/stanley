@@ -1,12 +1,13 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Building2, Plus, ReceiptText } from "lucide-react";
 import { useApp } from "@/app/AppState";
-import { SERVICES, getBranch } from "@/data/demo/catalog";
+import { SERVICES, getBranch, servicePrice } from "@/data/company";
 import type { Branch } from "@/data/types";
 import { AnimatedPage, Reveal } from "@/shared/motion";
 import { formatMoney, greeting } from "@/shared/format";
-import { Badge, Button, DemoChip, PageHeader, Row, SectionHeader, Table } from "@/shared/ui/controls";
+import { Badge, Button, DemoChip, PageHeader, SectionHeader } from "@/shared/ui/controls";
 import { Modal } from "@/shared/ui/Modal";
+import { SearchSelect } from "@/shared/ui/SearchSelect";
 import { WelcomeBanner } from "@/features/dashboard/WelcomeBanner";
 import { KpiGrid } from "@/features/dashboard/KpiGrid";
 import { FinancialAnalytics } from "@/features/dashboard/FinancialAnalytics";
@@ -58,6 +59,9 @@ export function BranchDashboard({ branch }: { branch: Branch }) {
 function BillingPage({ branch }: { branch: Branch }) {
   const [receipt, setReceipt] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [service, setService] = useState("");
+  const [referrer, setReferrer] = useState("");
+  const { agents } = useApp();
   const { showToast } = useApp();
   return (
     <AnimatedPage>
@@ -112,54 +116,43 @@ function BillingPage({ branch }: { branch: Branch }) {
             Patient
             <input placeholder="Search name or patient ID" />
           </label>
-          <label className="field">
-            Referring doctor (optional)
-            <input placeholder="Search referrer" />
-          </label>
-          <label className="field full">
+          <div className="field">
+            Referring PR agent (optional)
+            <SearchSelect
+              value={referrer}
+              ariaLabel="Referring PR agent"
+              placeholder="No referrer"
+              searchPlaceholder={`Search ${agents.length} PR agents by name, hospital or phone`}
+              options={[{ value: "", label: "No referrer" }, ...agents.map((a) => ({ value: String(a.id), label: a.name, description: a.hospital ? a.hospital.toUpperCase() : "No hospital assigned", keywords: `${a.phone} ${a.id}` }))]}
+              onChange={setReferrer}
+            />
+          </div>
+          <div className="field full">
             Diagnostic service
-            <select>
-              {SERVICES.map((s) => (
-                <option key={s.name}>
-                  {s.name} — {formatMoney(s.price[branch.currency], branch.currency)}
-                </option>
-              ))}
-            </select>
-          </label>
+            <SearchSelect
+              value={service}
+              ariaLabel="Diagnostic service"
+              placeholder="Select a service"
+              searchPlaceholder={`Search ${SERVICES.length} billable services`}
+              options={SERVICES.map((s) => ({ value: String(s.id), label: s.name, description: `${s.category} · ${formatMoney(servicePrice(s, branch.currency), branch.currency)}` }))}
+              onChange={setService}
+            />
+          </div>
         </div>
+        <p className="hint" style={{ margin: 0 }}>
+          Services and prices come from the real catalogue. Items without a price on file are not billable until priced.
+        </p>
       </Modal>
     </AnimatedPage>
   );
 }
 
 function SettingsPage({ branch }: { branch: Branch }) {
-  const { showToast } = useApp();
-  const [editing, setEditing] = useState<string | null>(null);
-  const svc = SERVICES.find((s) => s.name === editing);
   return (
     <AnimatedPage>
-      <PageHeader eyebrow={`Branch configuration · ${branch.name}`} title="Settings" description="Branch profile and branch-specific service prices." actions={<DemoChip />} />
+      <PageHeader eyebrow={`Branch configuration · ${branch.name}`} title="Settings" description="Branch profile and the branch's service catalogue and prices." />
       <ContextNotice branch={branch} />
-      <Panel title="Diagnostic services & branch pricing" description={`Prices apply only to ${branch.name} and are recorded in ${branch.currency}. Every change is audited and notified to the Company Admin.`}>
-        <Table headers={["Service", "Category", { label: "Current price", align: "right" }, ""]} label="Service prices">
-          {SERVICES.map((s) => (
-            <Row key={s.name}>
-              <td>
-                <strong>{s.name}</strong>
-              </td>
-              <td>{s.category}</td>
-              <td className="right num">
-                <strong>{formatMoney(s.price[branch.currency], branch.currency)}</strong>
-              </td>
-              <td className="right">
-                <button className="text-link" onClick={() => setEditing(s.name)}>
-                  Edit price
-                </button>
-              </td>
-            </Row>
-          ))}
-        </Table>
-      </Panel>
+      <InventoryView scope={[branch.id]} />
       <div style={{ height: 22 }} />
       <Panel title="Branch profile">
         <div className="form-grid">
@@ -179,46 +172,16 @@ function SettingsPage({ branch }: { branch: Branch }) {
             Manager
             <input defaultValue={branch.manager} readOnly />
           </label>
+          <label className="field">
+            Branch code
+            <input defaultValue={branch.code} readOnly />
+          </label>
           <label className="field full">
             Address
             <textarea defaultValue={branch.address} />
           </label>
         </div>
       </Panel>
-      <Modal
-        open={!!svc}
-        onClose={() => setEditing(null)}
-        title={`Edit ${editing ?? ""} price`}
-        description={`This change affects only the ${branch.name} branch.`}
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setEditing(null)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                setEditing(null);
-                showToast("Price change submitted (demo — not saved)");
-              }}
-            >
-              Save branch price
-            </Button>
-          </>
-        }
-      >
-        <label className="field">
-          Current price
-          <input value={svc ? formatMoney(svc.price[branch.currency], branch.currency) : ""} readOnly />
-        </label>
-        <label className="field">
-          New price ({branch.currency})
-          <input inputMode="decimal" placeholder="Enter new price" />
-        </label>
-        <label className="field">
-          Reason for change
-          <textarea placeholder="Recorded in the audit log" />
-        </label>
-      </Modal>
     </AnimatedPage>
   );
 }
@@ -262,13 +225,13 @@ export function BranchWorkspacePage({ branchId, page }: { branchId: string; page
       );
     case "inventory":
       return (
-        <Simple branch={branch} eyebrow="Branch operations" title="Inventory" description="Branch stock, reorder levels and expiry.">
-          <InventoryView scope={scope} initialFilter={f === "low" ? "low" : "all"} />
+        <Simple branch={branch} eyebrow="Branch operations" title="Inventory" description="The branch's billable service catalogue and prices." demo={false}>
+          <InventoryView scope={scope} initialFilter={f ?? "all"} />
         </Simple>
       );
     case "pr":
       return (
-        <Simple branch={branch} eyebrow="Branch operations" title="PR Management" description="Branch PR officers, referral partners and commission accrued.">
+        <Simple branch={branch} eyebrow="Branch operations" title="PR Management" description="PR agents (referring doctors), their assigned hospitals and referral activity." demo={false}>
           <PRView scope={scope} />
         </Simple>
       );

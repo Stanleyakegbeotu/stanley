@@ -1,0 +1,340 @@
+/*
+ * Finance & Expenses workspace (src/features/finance/FinanceWorkspace.tsx).
+ * One theme colour; red is reserved for losses, money out and overdue balances.
+ */
+
+.fin-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* ─────────────── Position cards (Today / Month / Year) ─────────────── */
+.fin-periods {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+@media (max-width: 1180px) {
+  .fin-periods {
+    grid-template-columns: 1fr;
+  }
+}
+
+.fin-pos {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
+.fin-pos-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px 22px 20px 26px;
+}
+
+.fin-net {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fin-net span {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--brand-600) 60%, var(--muted));
+}
+
+.fin-net strong {
+  font-size: 30px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  color: var(--brand-800);
+}
+
+.fin-net small {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.fin-net.is-loss strong {
+  color: var(--danger);
+}
+
+.fin-ratio {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fin-ratio-bar {
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--brand-600) 12%, var(--surface));
+}
+
+.fin-ratio-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--brand-400), var(--brand-700));
+}
+
+.fin-ratio span {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.fin-ratio b {
+  color: var(--ink);
+}
+
+.fin-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--line);
+}
+
+.fin-rows li {
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px dashed var(--line);
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+
+.fin-rows li:last-child {
+  border-bottom: 0;
+}
+
+.fin-rows li > svg {
+  color: var(--brand-600);
+}
+
+.fin-rows li span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.fin-rows li small {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.fin-rows li b {
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.fin-rows li.is-out b,
+.fin-rows li.is-due b {
+  color: var(--danger);
+}
+
+.fin-rows li.is-out > svg,
+.fin-rows li.is-due > svg {
+  color: color-mix(in srgb, var(--danger) 80%, var(--muted));
+}
+
+/* ─────────────── Net profit bars ─────────────── */
+.fin-bars-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.fin-bars {
+  position: relative;
+  height: 220px;
+  display: flex;
+  align-items: stretch;
+  gap: 3px;
+  padding-bottom: 22px;
+}
+
+.fin-zero {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 1px dashed color-mix(in srgb, var(--ink) 30%, transparent);
+  z-index: 1;
+}
+
+.fin-bar {
+  position: relative;
+  flex: 1;
+  min-width: 2px;
+}
+
+.fin-bar > span {
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  border-radius: 4px;
+  background: linear-gradient(180deg, var(--brand-500), var(--brand-700));
+}
+
+.fin-bar > span.is-loss {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--danger) 70%, #fff), var(--danger));
+}
+
+.fin-bar:hover > span {
+  filter: brightness(1.12);
+}
+
+.fin-bar small {
+  position: absolute;
+  bottom: -22px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.fin-bars-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.fin-bars-foot b {
+  color: var(--ink);
+}
+
+.fin-bars-foot b.is-loss {
+  color: var(--danger);
+}
+
+/* ─────────────── Finance log ─────────────── */
+.fin-log-tools {
+  gap: 10px;
+}
+
+.fin-log-tools .inv-count {
+  margin-left: auto;
+}
+
+.fin-tot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.fin-tot b {
+  font-weight: 750;
+  color: var(--ink);
+}
+
+.fin-tot.is-in b,
+.fin-tot.is-net b {
+  color: var(--brand-700);
+}
+
+.fin-tot.is-out b {
+  color: var(--danger);
+}
+
+.fin-src {
+  max-width: 420px;
+}
+
+.fin-src strong {
+  display: block;
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.fin-src small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fin-amt.is-in {
+  color: var(--brand-700);
+}
+
+.fin-amt.is-out {
+  color: var(--danger);
+}
+
+/* ─────────────── Expense detail pop-up ─────────────── */
+.fin-detail {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.fin-detail > div {
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--brand-600) 3%, var(--surface));
+}
+
+.fin-detail dt {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.fin-detail dd {
+  margin: 4px 0 0;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.fin-detail dd small {
+  display: block;
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.fin-detail dd.fin-amt {
+  font-size: 20px;
+  font-weight: 750;
+}
+
+/* Donut cards are narrow here: stack the ring above its legend so nothing is clipped. */
+.fin .donut-wrap {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 18px;
+}
+
+.fin .donut {
+  align-self: center;
+}

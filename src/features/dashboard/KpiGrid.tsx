@@ -5,6 +5,7 @@ import type { Currency, Money } from "@/data/types";
 import { CountUp, Reveal, useMotionPreset } from "@/shared/motion";
 import { formatCount, formatMoney, moneyEntries } from "@/shared/format";
 import { InfoTip } from "@/shared/ui/controls";
+import { FitText } from "@/shared/ui/FitText";
 import { compareMoney, type Summary } from "@/services/analytics";
 import { OPERATING_CONTRIBUTION_RULE } from "@/services/businessRules";
 
@@ -47,9 +48,9 @@ function MoneyValue({ money }: { money: Money }) {
   const [[c0, v0], ...rest] = entries;
   return (
     <>
-      <div className="kpi-value">
+      <FitText className="kpi-value">
         <CountUp value={v0} format={bigFormat(c0)} />
-      </div>
+      </FitText>
       {rest.length > 0 && (
         <div className="kpi-sub-values">
           {rest.map(([c, v]) => (
@@ -86,7 +87,7 @@ function KpiCard({
     <motion.article className={`kpi ${tone}`} variants={m.revealItem} whileHover={m.cardHover} role="listitem" aria-label={title}>
       <div className="kpi-head">
         <span className="kpi-icon">
-          <Icon size={23} strokeWidth={1.9} />
+          <Icon size={19} strokeWidth={1.9} />
         </span>
         <h3>{title}</h3>
         <InfoTip text={info} label={`About ${title}`} />

@@ -2,13 +2,14 @@ import { useMemo, useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import { ArrowLeft, ArrowRight, Building2, Check, MoreHorizontal, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import { useApp } from "@/app/AppState";
-import { BRANCHES, getBranch } from "@/data/demo/catalog";
-import { AUDIT, DRAFTS, EXPENSE_RECORDS, HEADCOUNT, INVENTORY, PATIENTS, PR_OFFICERS, STAFF, TRANSACTIONS, TRASH } from "@/data/demo/records";
+import { BRANCHES, getBranch } from "@/data/company";
+import { AUDIT, DRAFTS, EXPENSE_RECORDS, HEADCOUNT, PATIENTS, STAFF, TRANSACTIONS, TRASH } from "@/data/demo/records";
 import type { Currency, Money } from "@/data/types";
 import { CountUp, Reveal, useMotionPreset } from "@/shared/motion";
 import { formatCount, formatMoney, formatRelative, initials, moneyEntries } from "@/shared/format";
 import { Badge, Button, DemoChip, EmptyState, Row, SearchInput, Segmented, Table, type Tone } from "@/shared/ui/controls";
 import { Modal } from "@/shared/ui/Modal";
+import { RecordExpenseDialog } from "./createForms";
 import { resolveRange, summarize } from "@/services/analytics";
 
 /** null = every branch (company-wide), otherwise the branches in scope. */
@@ -49,7 +50,7 @@ export function MoneyStack({ money }: { money: Money }) {
 
 export function Panel({ title, description, actions, children }: { title: string; description?: ReactNode; actions?: ReactNode; children: ReactNode }) {
   return (
-    <Reveal className="card card-pad">
+    <Reveal className="card card-pad panel">
       <div className="card-head">
         <div>
           <h3>{title}</h3>
@@ -62,78 +63,6 @@ export function Panel({ title, description, actions, children }: { title: string
   );
 }
 
-/* ─────────────── Inventory ─────────────── */
-export function InventoryView({ scope, initialFilter = "all" }: { scope: Scope; initialFilter?: "all" | "low" | "expiring" }) {
-  const [q, setQ] = useState("");
-  const [filter, setFilter] = useState<"all" | "low" | "expiring">(initialFilter);
-  const items = INVENTORY.filter((i) => inScope(scope, i.branchId));
-  const low = items.filter((i) => i.stock < i.reorderLevel);
-  const expiring = items.filter((i) => i.expiresInDays !== null && i.expiresInDays <= 30);
-  const value: Money = {};
-  items.forEach((i) => (value[cur(i.branchId)] = (value[cur(i.branchId)] ?? 0) + i.stock * i.unitCost));
-  const rows = (filter === "low" ? low : filter === "expiring" ? expiring : items).filter((i) => `${i.name} ${i.category} ${branchName(i.branchId)}`.toLowerCase().includes(q.toLowerCase()));
-
-  return (
-    <>
-      <StatTiles
-        items={[
-          { label: "Items tracked", value: <CountUp value={items.length} format={formatCount} /> },
-          { label: "Below reorder level", value: <CountUp value={low.length} format={formatCount} />, hint: "Needs restocking" },
-          { label: "Expiring within 30 days", value: <CountUp value={expiring.length} format={formatCount} /> },
-          { label: "Stock value", value: <MoneyStack money={value} />, hint: "Kept per currency" },
-        ]}
-      />
-      <Panel
-        title="Stock register"
-        description="Quantities on hand against reorder levels"
-        actions={
-          <div className="toolbar">
-            <SearchInput placeholder="Search items" value={q} onChange={setQ} />
-            <Segmented label="Stock filter" value={filter} onChange={setFilter} options={[{ value: "all", label: "All" }, { value: "low", label: `Low (${low.length})` }, { value: "expiring", label: "Expiring" }]} />
-          </div>
-        }
-      >
-        {rows.length === 0 ? (
-          <EmptyState title="No items match" />
-        ) : (
-          <Table headers={["Item", "Category", ...(scope?.length === 1 ? [] : ["Branch"]), "On hand", "Reorder level", "Expiry", { label: "Value", align: "right" }, "Status"]} label="Inventory">
-            {rows.map((i) => {
-              const status: [string, Tone] = i.stock <= i.reorderLevel * 0.5 ? ["Critical", "danger"] : i.stock < i.reorderLevel ? ["Low", "warn"] : ["In stock", "ok"];
-              return (
-                <Row key={i.id}>
-                  <td>
-                    <strong>{i.name}</strong>
-                    <div className="hint mono">{i.id}</div>
-                  </td>
-                  <td>{i.category}</td>
-                  {scope?.length === 1 ? null : <td>{branchName(i.branchId)}</td>}
-                  <td style={{ minWidth: 150 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <span className="num" style={{ width: 54 }}>
-                        {i.stock} {i.unit}s
-                      </span>
-                      <div className="progress" style={{ flex: 1 }}>
-                        <div style={{ width: `${Math.min(100, (i.stock / (i.reorderLevel * 2)) * 100)}%`, background: status[1] === "ok" ? "var(--brand-500)" : `var(--${status[1]})` }} />
-                      </div>
-                    </div>
-                  </td>
-                  <td className="num">{i.reorderLevel}</td>
-                  <td>{i.expiresInDays === null ? "—" : `${i.expiresInDays} days`}</td>
-                  <td className="right num">{formatMoney(i.stock * i.unitCost, cur(i.branchId))}</td>
-                  <td>
-                    <Badge tone={status[1]} dot>
-                      {status[0]}
-                    </Badge>
-                  </td>
-                </Row>
-              );
-            })}
-          </Table>
-        )}
-      </Panel>
-    </>
-  );
-}
 
 /* ─────────────── Staff ─────────────── */
 export function StaffTable({ branchId }: { branchId: string }) {
@@ -163,6 +92,9 @@ export function StaffTable({ branchId }: { branchId: string }) {
         description={`${rows.length} accounts shown · ${hc?.total ?? rows.length} on the full roster`}
         actions={<SearchInput placeholder="Search staff" value={q} onChange={setQ} />}
       >
+        {STAFF.filter((s) => s.branchId === branchId).length === 0 && (
+          <EmptyState title="No staff accounts yet">Staff and user records were not part of the legacy export. Accounts created in STANLEY will appear here.</EmptyState>
+        )}
         <Table headers={["Staff member", "Role", "Status", "Date added", "Last activity", ""]} label="Staff">
           {rows.map((s) => (
             <Row key={s.id}>
@@ -253,58 +185,8 @@ export function StaffBranchPicker({ scope, selected, onSelect }: { scope: Scope;
   );
 }
 
-/* ─────────────── PR Management ─────────────── */
-export function PRView({ scope }: { scope: Scope }) {
-  const { period } = useApp();
-  const range = resolveRange(period);
-  const rows = PR_OFFICERS.filter((p) => inScope(scope, p.branchId)).map((p) => {
-    const s = summarize([p.branchId], range);
-    const c = cur(p.branchId);
-    return { ...p, referrals: Math.round(s.referrals * p.share), commission: (s.prCommission[c] ?? 0) * p.share, currency: c };
-  });
-  const commissions: Money = {};
-  rows.forEach((r) => (commissions[r.currency] = (commissions[r.currency] ?? 0) + r.commission));
-  return (
-    <>
-      <StatTiles
-        items={[
-          { label: "PR officers", value: <CountUp value={rows.length} format={formatCount} /> },
-          { label: "Referral partners", value: <CountUp value={rows.reduce((s, r) => s + r.partners, 0)} format={formatCount} /> },
-          { label: "Attributed referrals", value: <CountUp value={rows.reduce((s, r) => s + r.referrals, 0)} format={formatCount} />, hint: "Selected reporting period" },
-          { label: "Commissions earned", value: <MoneyStack money={commissions} />, hint: "Kept per currency" },
-        ]}
-      />
-      <Panel title="PR officers" description="Referral attribution and commission accrued in the selected reporting period">
-        <Table headers={["Officer", ...(scope?.length === 1 ? [] : ["Branch"]), "Partners", "Referrals", { label: "Commission earned", align: "right" }, "Status"]} label="PR officers">
-          {rows.map((r) => (
-            <Row key={r.id}>
-              <td>
-                <div className="person">
-                  <span className="avatar">{initials(r.name)}</span>
-                  <div>
-                    <strong>{r.name}</strong>
-                    <small className="mono">{r.id}</small>
-                  </div>
-                </div>
-              </td>
-              {scope?.length === 1 ? null : <td>{branchName(r.branchId)}</td>}
-              <td className="num">{r.partners}</td>
-              <td className="num">{formatCount(r.referrals)}</td>
-              <td className="right num">
-                <strong>{formatMoney(r.commission, r.currency)}</strong>
-              </td>
-              <td>
-                <Badge tone={r.status === "Active" ? "ok" : "warn"} dot>
-                  {r.status}
-                </Badge>
-              </td>
-            </Row>
-          ))}
-        </Table>
-      </Panel>
-    </>
-  );
-}
+/* ─────────────── PR Management & Inventory (real legacy records) ─────────────── */
+export { InventoryView, PRView } from "./legacyViews";
 
 /* ─────────────── Patients ─────────────── */
 export function PatientsView({ scope, initialQuery = "" }: { scope: Scope; initialQuery?: string }) {
@@ -312,7 +194,9 @@ export function PatientsView({ scope, initialQuery = "" }: { scope: Scope; initi
   const rows = PATIENTS.filter((p) => inScope(scope, p.branchId) && `${p.name} ${p.id} ${p.phone}`.toLowerCase().includes(q.toLowerCase()));
   return (
     <Panel title="Patient directory" description={scope ? "Patients registered at this branch" : "Patient discovery covers every branch, regardless of the branch in view"} actions={<SearchInput placeholder="Name, patient ID or phone" value={q} onChange={setQ} />}>
-      {rows.length === 0 ? (
+      {PATIENTS.length === 0 ? (
+        <EmptyState title="No patient records yet">Patient records were not part of the legacy export. Patients registered in STANLEY will appear here.</EmptyState>
+      ) : rows.length === 0 ? (
         <EmptyState title="No patients match your search" />
       ) : (
         <Table headers={["Patient", "Patient ID", ...(scope?.length === 1 ? [] : ["Registration branch"]), "Phone", "Last visit", "Diagnostic orders", ""]} label="Patients">
@@ -350,19 +234,30 @@ export function PatientsView({ scope, initialQuery = "" }: { scope: Scope; initi
 /* ─────────────── Transactions ─────────────── */
 export function TransactionsTable({ scope, title = "Payment transactions" }: { scope: Scope; title?: string }) {
   const [q, setQ] = useState("");
-  const rows = TRANSACTIONS.filter((t) => inScope(scope, t.branchId) && `${t.id} ${t.patient}`.toLowerCase().includes(q.toLowerCase()));
+  const { agents } = useApp();
+  const agentName = (id: number | null) => (id === null ? null : (agents.find((a) => a.id === id)?.name ?? null));
+  const rows = TRANSACTIONS.filter((t) => inScope(scope, t.branchId) && `${t.id} ${t.patient} ${t.services.join(" ")} ${agentName(t.agentId) ?? ""}`.toLowerCase().includes(q.toLowerCase()));
   return (
-    <Panel title={title} description="Billed amount, payment received and balance are recorded separately" actions={<SearchInput placeholder="Search transactions" value={q} onChange={setQ} />}>
-      <Table headers={["Transaction", "Patient", ...(scope?.length === 1 ? [] : ["Branch"]), { label: "Billed", align: "right" }, { label: "Paid", align: "right" }, { label: "Balance", align: "right" }, "Method", "Time"]} label="Transactions">
+    <Panel
+      title={title}
+      description="Demonstration bills built from real catalogue services, prices and PR agents. Patients are anonymous references (no patient records were exported)."
+      actions={<SearchInput placeholder="Search bills, services or referrers" value={q} onChange={setQ} />}
+    >
+      <Table headers={["Bill", "Patient", "Services", ...(scope?.length === 1 ? [] : ["Branch"]), { label: "Billed", align: "right" }, { label: "Paid", align: "right" }, { label: "Balance", align: "right" }, "Method", "Time"]} label="Transactions">
         {rows.map((t) => {
           const c = cur(t.branchId);
           const bal = t.billed - t.paid;
+          const ref = agentName(t.agentId);
           return (
             <Row key={t.id}>
               <td className="mono">
                 <strong>{t.id}</strong>
               </td>
-              <td>{t.patient}</td>
+              <td>
+                {t.patient}
+                {ref && <small className="lg-raw">Referred by {ref}</small>}
+              </td>
+              <td style={{ maxWidth: 280 }}>{t.services.join(", ")}</td>
               {scope?.length === 1 ? null : <td>{branchName(t.branchId)}</td>}
               <td className="right num">{formatMoney(t.billed, c)}</td>
               <td className="right num">
@@ -435,54 +330,7 @@ export function ExpensesTable({ scope, canApprove }: { scope: Scope; canApprove:
           </Row>
         ))}
       </Table>
-      <Modal
-        open={adding}
-        onClose={() => setAdding(false)}
-        title="Record expense"
-        description="New expenses are submitted for approval before they count towards totals."
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setAdding(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                setAdding(false);
-                showToast("Expense submitted for approval (demo — not saved)");
-              }}
-            >
-              Submit for approval
-            </Button>
-          </>
-        }
-      >
-        <div className="form-grid">
-          <label className="field full">
-            Description
-            <input placeholder="e.g. Reagent restock" />
-          </label>
-          <label className="field">
-            Category
-            <select>
-              {["Reagents & consumables", "Utilities", "Equipment maintenance", "Logistics", "Administrative"].map((c) => (
-                <option key={c}>{c}</option>
-              ))}
-            </select>
-          </label>
-          <label className="field">
-            Amount (branch currency)
-            <input inputMode="decimal" placeholder="0.00" />
-          </label>
-          <label className="field">
-            Expense date
-            <input type="date" />
-          </label>
-          <label className="field">
-            Supplier
-            <input placeholder="Optional" />
-          </label>
-        </div>
-      </Modal>
+      <RecordExpenseDialog open={adding} onClose={() => setAdding(false)} branchId={scope?.[0] ?? null} />
     </Panel>
   );
 }

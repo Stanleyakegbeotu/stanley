@@ -5,7 +5,7 @@ import { ArrowLeft, Building2, ChevronRight, LogOut, PanelLeftClose, PanelLeftOp
 import { useApp } from "@/app/AppState";
 import { branchRoute } from "@/app/router";
 import { THEMES, type ThemeId } from "@/app/themes";
-import { ACTIVE_BRANCHES, BRANCHES, COMPANY, getBranch } from "@/data/demo/catalog";
+import { ACTIVE_BRANCHES, BRANCHES, COMPANY, getBranch } from "@/data/company";
 import { initials } from "@/shared/format";
 import { Popover } from "@/shared/ui/Popover";
 import { Badge } from "@/shared/ui/controls";
@@ -53,7 +53,7 @@ export function Sidebar() {
         </div>
         <div className="sb-brand-text sb-fade">
           <strong>{COMPANY.name}</strong>
-          <span>{branch ? `${branch.name} Branch` : contextBranch ? `Company · ${contextBranch.name}` : "Company · All branches"}</span>
+          <span>{branch ? `${branch.name} Branch` : contextBranch ? contextBranch.name : "All branches"}</span>
         </div>
         <button
           className="sb-toggle"

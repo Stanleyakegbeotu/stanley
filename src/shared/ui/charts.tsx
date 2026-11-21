@@ -54,7 +54,9 @@ export function AreaLineChart({
       return `${d} C ${cx} ${y(vals[i - 1])}, ${cx} ${y(v)}, ${x(i)} ${y(v)}`;
     }, "");
 
-  const tickEvery = Math.max(1, Math.ceil(n / 8));
+  const tickEvery = Math.max(1, Math.ceil(n / 7));
+  // Show the final label only when it isn't crowding the previous tick.
+  const showLast = n > 1 && (n - 1) % tickEvery >= Math.ceil(tickEvery * 0.6);
   const ticks = [1, 0.75, 0.5, 0.25, 0];
 
   const onMove = (e: MouseEvent) => {
@@ -149,7 +151,7 @@ export function AreaLineChart({
       </div>
       <div className="chart-x" style={{ position: "relative", height: 16 }} aria-hidden="true">
         {labels.map((l, i) =>
-          i % tickEvery === 0 || i === n - 1 ? (
+          i % tickEvery === 0 || (i === n - 1 && showLast) ? (
             <span key={i} style={{ position: "absolute", left: `${(x(i) / W) * 100}%`, transform: "translateX(-50%)", whiteSpace: "nowrap" }}>
               {l}
             </span>
@@ -205,12 +207,12 @@ export function HBarList({
   return (
     <div className="hbar-list">
       {items.map((it, i) => (
-        <div className="hbar-row" key={it.label}>
+        <div className="hbar-row" key={`${it.label}-${i}`}>
           <span title={it.hint}>{it.label}</span>
           <strong className="num">{it.display}</strong>
           <div className="hbar-track">
             <motion.div
-              key={`${it.label}-${it.value}`}
+              key={`${it.label}-${i}-${it.value}`}
               className="hbar-fill"
               style={{ width: `${(it.value / max) * 100}%`, background: it.color ?? "var(--brand-500)" }}
               initial={reduced ? false : { scaleX: 0 }}

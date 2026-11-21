@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { getBranch } from "@/data/demo/catalog";
+import { getBranch } from "@/data/company";
 import type { Currency, DateRange } from "@/data/types";
 import { Reveal, CountUp } from "@/shared/motion";
 import { formatCount, formatMoney, formatPct } from "@/shared/format";
@@ -19,7 +19,12 @@ export function CurrencyTabs({ currencies, value, onChange }: { currencies: Curr
   return <Segmented label="Currency" value={value} onChange={onChange} options={currencies.map((c) => ({ value: c, label: c }))} />;
 }
 
-export function FinancialAnalytics({ branchIds, range, title = "Revenue, collections, balances & expenses" }: { branchIds: string[]; range: DateRange; title?: string }) {
+/**
+ * Calculates the financial analytics once. The Company dashboard shares the
+ * result between its Daily Payment Summary and Financial Overview slots so the
+ * figures are never computed twice.
+ */
+export function useFinancialAnalyticsData(branchIds: string[], range: DateRange) {
   const { currencies, current: cur, setCurrency } = useCurrencyTab(branchIds);
   const ids = useMemo(() => branchIds.filter((id) => getBranch(id)?.currency === cur), [branchIds, cur]);
   const fm = (n: number) => formatMoney(n, cur, true);
@@ -60,12 +65,41 @@ export function FinancialAnalytics({ branchIds, range, title = "Revenue, collect
   ];
   const totalPayments = data.methods.reduce((a, b) => a + b.value, 0);
 
+  return { branchIds, currencies, cur, setCurrency, fm, data, s, agingSegs, agingTotal, totalPayments };
+}
+
+export type FinancialAnalyticsData = ReturnType<typeof useFinancialAnalyticsData>;
+
+/** Self-contained section (used by the Branch dashboard). */
+export function FinancialAnalytics({ branchIds, range, title }: { branchIds: string[]; range: DateRange; title?: string }) {
+  const a = useFinancialAnalyticsData(branchIds, range);
+  return <FinancialAnalyticsView a={a} title={title} />;
+}
+
+export function FinancialAnalyticsView({
+  a,
+  title = "Revenue, collections, balances & expenses",
+  eyebrow = "Financial analytics",
+  split = false,
+}: {
+  a: FinancialAnalyticsData;
+  title?: string;
+  eyebrow?: string;
+  /**
+   * Company dashboard layout: the payments analysis (donut) and the revenue
+   * performance chart are shown side by side in the Daily Payment Summary
+   * slot, so they are left out here.
+   */
+  split?: boolean;
+}) {
+  const { branchIds, currencies, cur, setCurrency, fm, data, s, agingSegs, agingTotal } = a;
+
   if (!branchIds.length) return null;
 
   return (
     <>
       <SectionHeader
-        eyebrow="Financial analytics"
+        eyebrow={eyebrow}
         title={title}
         description="Billed value, collected payments, approved expenses and outstanding balances are shown side by side — never netted against each other."
         demo
@@ -100,56 +134,9 @@ export function FinancialAnalytics({ branchIds, range, title = "Revenue, collect
       </Reveal>
 
       <Reveal mode="stagger" className="analytics-grid">
-        <Reveal hover className="card card-pad span-8">
-          <div className="card-head">
-            <div>
-              <h3>Revenue performance</h3>
-              <p>
-                {data.trend.note} · {cur}
-              </p>
-            </div>
-            <div className="chart-legend">
-              <span>
-                <i style={{ background: "var(--kpi-blue)" }} />
-                Revenue generated
-              </span>
-              <span>
-                <i style={{ background: "var(--kpi-green)" }} />
-                Payments received
-              </span>
-              <span>
-                <i style={{ background: "var(--kpi-orange)" }} />
-                Expenses
-              </span>
-            </div>
-          </div>
-          <AreaLineChart
-            labels={data.trend.labels}
-            format={fm}
-            series={[
-              { key: "rev", label: "Revenue", color: "var(--kpi-blue)", values: data.trend.revenue, area: true },
-              { key: "pay", label: "Payments", color: "var(--kpi-green)", values: data.trend.payments },
-              { key: "exp", label: "Expenses", color: "var(--kpi-orange)", values: data.trend.expenses, dashed: true },
-            ]}
-          />
-        </Reveal>
+        {!split && <RevenuePerformanceCard a={a} className="span-8" />}
 
-        <Reveal hover className="card card-pad span-4">
-          <div className="card-head">
-            <div>
-              <h3>Collections performance</h3>
-              <p>
-                Payment method breakdown · <CountUp value={s.transactions} format={formatCount} /> transactions
-              </p>
-            </div>
-          </div>
-          <Donut
-            centerLabel="Payments received"
-            centerValue={fm(totalPayments)}
-            format={fm}
-            segments={data.methods.map((x, i) => ({ label: x.label, value: x.value, color: CHART_COLORS[i] }))}
-          />
-        </Reveal>
+        {!split && <CollectionsMethodCard a={a} className="span-4" />}
 
         <Reveal hover className="card card-pad span-4">
           <div className="card-head">
@@ -224,22 +211,7 @@ export function FinancialAnalytics({ branchIds, range, title = "Revenue, collect
           )}
         </Reveal>
 
-        <Reveal hover className="card card-pad span-6">
-          <div className="card-head">
-            <div>
-              <h3>Collections by branch</h3>
-              <p>Payments received and collection ratio (payments ÷ revenue generated). It can exceed 100% when older balances are collected.</p>
-            </div>
-          </div>
-          <HBarList
-            items={data.collections.map((x) => ({
-              label: x.branch.name,
-              value: x.value,
-              display: `${fm(x.value)} · ${formatPct(x.rate, 0)}`,
-              color: "var(--kpi-green)",
-            }))}
-          />
-        </Reveal>
+        <CollectionsByBranchCard a={a} className="span-6" />
 
         <Reveal hover className="card card-pad span-6">
           <div className="card-head">
@@ -255,6 +227,105 @@ export function FinancialAnalytics({ branchIds, range, title = "Revenue, collect
             })}
           />
         </Reveal>
+      </Reveal>
+    </>
+  );
+}
+
+/* ─────────────── Cards shared by both layouts ─────────────── */
+
+function RevenuePerformanceCard({ a, className }: { a: FinancialAnalyticsData; className: string }) {
+  const { data, cur, fm } = a;
+  return (
+    <Reveal hover className={`card card-pad ${className}`}>
+      <div className="card-head">
+        <div>
+          <h3>Revenue performance</h3>
+          <p>
+            {data.trend.note} · {cur}
+          </p>
+        </div>
+        <div className="chart-legend">
+          <span>
+            <i style={{ background: "var(--kpi-blue)" }} />
+            Revenue generated
+          </span>
+          <span>
+            <i style={{ background: "var(--kpi-green)" }} />
+            Payments received
+          </span>
+          <span>
+            <i style={{ background: "var(--kpi-orange)" }} />
+            Expenses
+          </span>
+        </div>
+      </div>
+      <AreaLineChart
+        labels={data.trend.labels}
+        format={fm}
+        series={[
+          { key: "rev", label: "Revenue", color: "var(--kpi-blue)", values: data.trend.revenue, area: true },
+          { key: "pay", label: "Payments", color: "var(--kpi-green)", values: data.trend.payments },
+          { key: "exp", label: "Expenses", color: "var(--kpi-orange)", values: data.trend.expenses, dashed: true },
+        ]}
+      />
+    </Reveal>
+  );
+}
+
+function CollectionsMethodCard({ a, className }: { a: FinancialAnalyticsData; className: string }) {
+  const { s, fm, data, totalPayments } = a;
+  return (
+    <Reveal hover className={`card card-pad ${className}`}>
+      <div className="card-head">
+        <div>
+          <h3>Collections performance</h3>
+          <p>
+            Payment method breakdown · <CountUp value={s.transactions} format={formatCount} /> transactions
+          </p>
+        </div>
+      </div>
+      <Donut
+        centerLabel="Payments received"
+        centerValue={fm(totalPayments)}
+        format={fm}
+        segments={data.methods.map((x, i) => ({ label: x.label, value: x.value, color: CHART_COLORS[i] }))}
+      />
+    </Reveal>
+  );
+}
+
+function CollectionsByBranchCard({ a, className }: { a: FinancialAnalyticsData; className: string }) {
+  const { fm, data } = a;
+  return (
+    <Reveal hover className={`card card-pad ${className}`}>
+      <div className="card-head">
+        <div>
+          <h3>Collections by branch</h3>
+          <p>Payments received and collection ratio (payments ÷ revenue generated). It can exceed 100% when older balances are collected.</p>
+        </div>
+      </div>
+      <HBarList
+        items={data.collections.map((x) => ({
+          label: x.branch.name,
+          value: x.value,
+          display: `${fm(x.value)} · ${formatPct(x.rate, 0)}`,
+          color: "var(--kpi-green)",
+        }))}
+      />
+    </Reveal>
+  );
+}
+
+/** Payments received analysis and revenue performance, side by side (two per row). */
+export function PaymentSummaryView({ a, eyebrow, title, description }: { a: FinancialAnalyticsData; eyebrow: string; title: string; description: string }) {
+  if (!a.branchIds.length) return null;
+  return (
+    <>
+      <SectionHeader eyebrow={eyebrow} title={title} description={description} demo actions={<CurrencyTabs currencies={a.currencies} value={a.cur} onChange={a.setCurrency} />} />
+      <Reveal mode="stagger" className="analytics-grid pair-grid">
+        <CollectionsMethodCard a={a} className="span-6" />
+        <RevenuePerformanceCard a={a} className="span-6" />
       </Reveal>
     </>
   );

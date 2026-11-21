@@ -305,7 +305,7 @@ export function SectionHeader({
 }
 
 /* ─────────────── Table ─────────────── */
-export function Table({ headers, children, label }: { headers: (string | { label: string; align?: "right" })[]; children: ReactNode; label?: string }) {
+export function Table({ headers, children, label }: { headers: (string | { label: string; align?: "right"; className?: string })[]; children: ReactNode; label?: string }) {
   const m = useMotionPreset();
   return (
     <div className="table-wrap thin-scroll">
@@ -315,8 +315,9 @@ export function Table({ headers, children, label }: { headers: (string | { label
             {headers.map((h, i) => {
               const label = typeof h === "string" ? h : h.label;
               const align = typeof h === "string" ? undefined : h.align;
+              const extra = typeof h === "string" ? "" : (h.className ?? "");
               return (
-                <th key={i} className={align === "right" ? "right" : undefined}>
+                <th key={i} className={[align === "right" ? "right" : "", extra].join(" ").trim() || undefined}>
                   {label}
                 </th>
               );

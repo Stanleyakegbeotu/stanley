@@ -1,13 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Bell,
   Building2,
+  CalendarDays,
   Check,
   CheckCheck,
   ChevronDown,
   CircleUserRound,
   FileText,
+  Handshake,
+  Hospital,
   LogOut,
   Package,
   Palette,
@@ -20,90 +23,28 @@ import {
 } from "lucide-react";
 import { useApp } from "@/app/AppState";
 import { branchRoute } from "@/app/router";
-import { ACTIVE_BRANCHES, BRANCHES, getBranch } from "@/data/demo/catalog";
+import { ACTIVE_BRANCHES, BRANCHES, getBranch } from "@/data/company";
 import { DRAFTS, PATIENTS, STAFF, TRANSACTIONS, type NotificationItem } from "@/data/demo/records";
-import { formatRelative, formatTime, initials } from "@/shared/format";
+import { formatMoney, formatRelative, formatTime, initials } from "@/shared/format";
+import { CATALOGUE_INVENTORY } from "@/data/catalogueRules";
+import { LEGACY_BRANCH_ID, LEGACY_HOSPITAL_DIRECTORY, hasPhone, hospitalKey, phoneDigits, searchText } from "@/data/legacy";
 import { Popover } from "@/shared/ui/Popover";
-import { Badge, Segmented } from "@/shared/ui/controls";
+import { Segmented } from "@/shared/ui/controls";
+import { useNetworkStatus } from "@/shared/useNetworkStatus";
 
 export function Header() {
   const { route } = useApp();
   const br = branchRoute(route);
   return (
     <header className="topbar">
-      {br ? <BranchContextControl branchId={br.branchId} /> : <CompanyContextSelector />}
+      {br && <BranchContextControl branchId={br.branchId} />}
       <GlobalSearch scopeBranchId={br?.branchId} />
       <DateTime />
+      <NetworkButton />
       <NotificationsButton />
       <span className="hdr-divider" aria-hidden="true" />
       <ProfileMenu />
     </header>
-  );
-}
-
-/* ─────────────── Company context ─────────────── */
-function CompanyContextSelector() {
-  const { context, setContext } = useApp();
-  const ref = useRef<HTMLButtonElement>(null);
-  const [open, setOpen] = useState(false);
-  const current = context === "all" ? null : getBranch(context);
-  const choose = (v: string) => {
-    setContext(v);
-    setOpen(false);
-  };
-  return (
-    <>
-      <button
-        ref={ref}
-        className="hdr-control ctx-select"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-label={`Company context: ${current ? current.name : "All branches"}`}
-        onClick={() => setOpen((o) => !o)}
-      >
-        <span className="ctx-select-text">
-          <small>Company context</small>
-          <strong>{current ? `${current.name} Branch` : "All branches"}</strong>
-        </span>
-        <span className="ctx-chevron">
-          <ChevronDown size={17} />
-        </span>
-      </button>
-      <Popover anchor={ref} open={open} onClose={() => setOpen(false)} matchWidth width={330} role="listbox" label="Company context">
-        <div className="menu-label">Company context</div>
-        <button className={`menu-item ${context === "all" ? "is-selected" : ""}`} role="option" aria-selected={context === "all"} onClick={() => choose("all")}>
-          <span className="mi-icon">
-            <Building2 size={16} />
-          </span>
-          <span className="mi-text">
-            All branches
-            <small>{ACTIVE_BRANCHES.length} active · totals stay grouped by currency</small>
-          </span>
-          {context === "all" && <Check size={16} className="mi-check" />}
-        </button>
-        <div className="menu-sep" />
-        <div className="menu-label">Individual branch</div>
-        {BRANCHES.map((b) => (
-          <button
-            key={b.id}
-            role="option"
-            aria-selected={context === b.id}
-            disabled={b.status !== "Active"}
-            className={`menu-item ${context === b.id ? "is-selected" : ""}`}
-            onClick={() => choose(b.id)}
-          >
-            <span className="mi-text">
-              {b.name}
-              <small>
-                {b.city}, {b.country}
-              </small>
-            </span>
-            {b.status !== "Active" ? <Badge>Inactive</Badge> : <span className="currency-chip">{b.currency}</span>}
-            {context === b.id && <Check size={16} className="mi-check" />}
-          </button>
-        ))}
-      </Popover>
-    </>
   );
 }
 
@@ -163,7 +104,7 @@ interface SearchResult {
 }
 
 function GlobalSearch({ scopeBranchId }: { scopeBranchId?: string }) {
-  const { navigate } = useApp();
+  const { navigate, agents } = useApp();
   const wrap = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const [q, setQ] = useState("");
@@ -194,6 +135,22 @@ function GlobalSearch({ scopeBranchId }: { scopeBranchId?: string }) {
       BRANCHES.filter((b) => b.name.toLowerCase().includes(term) || b.city.toLowerCase().includes(term))
         .slice(0, 3)
         .forEach((b) => out.push({ group: "Branches", title: `${b.name} Branch`, subtitle: `${b.city}, ${b.country}`, icon: Building2, to: b.status === "Active" ? `/branch/${b.id}/dashboard` : "/branches" }));
+    // Real baseline records: PR agents (name / phone), hospitals and catalogue services.
+    if (inScope(LEGACY_BRANCH_ID)) {
+      const t = searchText(q);
+      const digits = phoneDigits(q);
+      const prBase = scopeBranchId ? `/branch/${scopeBranchId}/pr` : "/pr";
+      agents
+        .filter((a) => searchText(a.name, a.hospital).includes(t) || (digits.length >= 4 && phoneDigits(a.phone).includes(digits)))
+        .slice(0, 4)
+        .forEach((a) => out.push({ group: "PR agents", title: a.name, subtitle: `${hospitalKey(a.hospital) || "No hospital assigned"}${hasPhone(a.phone) ? ` · ${a.phone}` : ""}`, icon: Handshake, to: `${prBase}?agent=${a.id}` }));
+      LEGACY_HOSPITAL_DIRECTORY.filter((h) => searchText(h.key, ...h.rawVariants).includes(t))
+        .slice(0, 3)
+        .forEach((h) => out.push({ group: "Hospitals", title: h.key, subtitle: `${h.agentCount} PR agent${h.agentCount === 1 ? "" : "s"}`, icon: Hospital, to: `${prBase}?hospital=${encodeURIComponent(h.key)}` }));
+      CATALOGUE_INVENTORY.filter((i) => searchText(i.name, i.catalogueCategory, i.recordedName ?? "").includes(t))
+        .slice(0, 4)
+        .forEach((i) => out.push({ group: "Services", title: i.name, subtitle: `${i.catalogueCategory} · ${i.price === null ? "No price on file" : formatMoney(i.price, "NGN")}`, icon: Package, to: scopeBranchId ? `/branch/${scopeBranchId}/inventory` : "/inventory" }));
+    }
     TRANSACTIONS.filter((t) => inScope(t.branchId) && (t.id.toLowerCase().includes(term) || t.patient.toLowerCase().includes(term)))
       .slice(0, 3)
       .forEach((t) => out.push({ group: "Orders & bills", title: t.id, subtitle: `${t.patient} · ${branchName(t.branchId)}`, icon: ReceiptText, to: scopeBranchId ? `/branch/${scopeBranchId}/billing` : "/finance?tab=payments" }));
@@ -204,7 +161,7 @@ function GlobalSearch({ scopeBranchId }: { scopeBranchId?: string }) {
       .slice(0, 3)
       .forEach((s) => out.push({ group: "Staff", title: s.name, subtitle: `${s.role} · ${branchName(s.branchId)}`, icon: Users, to: scopeBranchId ? `/branch/${scopeBranchId}/staff` : `/staff?branch=${s.branchId}` }));
     return out;
-  }, [q, scopeBranchId]);
+  }, [q, scopeBranchId, agents]);
 
   const go = (r: SearchResult) => {
     navigate(r.to);
@@ -219,7 +176,7 @@ function GlobalSearch({ scopeBranchId }: { scopeBranchId?: string }) {
       <input
         ref={input}
         value={q}
-        placeholder={scopeBranchId ? "Search this branch's patients, bills or staff" : "Search patients, branches or orders"}
+        placeholder={scopeBranchId ? "Search patients, bills or staff" : "Search patients, branches or orders"}
         aria-label="Global search"
         onChange={(e) => {
           setQ(e.target.value);
@@ -277,14 +234,22 @@ function DateTime() {
     const t = window.setInterval(() => setNow(new Date()), 15_000);
     return () => window.clearInterval(t);
   }, []);
-  const weekday = now.toLocaleDateString("en-GB", { weekday: "short" });
-  const day = now.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  const weekday = now.toLocaleDateString("en-GB", { weekday: "long" });
+  const weekdayShort = now.toLocaleDateString("en-GB", { weekday: "short" });
+  const day = now.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+  const dayShort = now.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
   return (
-    <div className="hdr-control hdr-datetime" aria-label={`${now.toLocaleDateString("en-GB", { dateStyle: "full" })}, ${formatTime(now)}`}>
-      <span>
-        {weekday}, {day}
+    <div className="hdr-control hdr-datetime" role="group" aria-label={`${now.toLocaleDateString("en-GB", { dateStyle: "full" })}, ${formatTime(now)}`}>
+      <span className="dt-date" aria-hidden="true">
+        <CalendarDays size={19} />
+        <span className="dt-long">
+          {weekday}, {day}
+        </span>
+        <span className="dt-short">
+          {weekdayShort}, {dayShort}
+        </span>
       </span>
-      <time className="hdr-time" dateTime={now.toISOString()}>
+      <time className="hdr-time" dateTime={now.toISOString()} aria-hidden="true">
         {formatTime(now)}
       </time>
     </div>
@@ -299,6 +264,77 @@ const NOTE_ICON: Record<NotificationItem["kind"], typeof Bell> = {
   inventory: Package,
   system: Settings,
 };
+
+/* ─────────────── Network status (offline-first) ─────────────── */
+
+/** Mobile-style signal bars; all bars lit when online, dimmed with a slash when offline. */
+function SignalBars({ online }: { online: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" className="net-bars">
+      {[
+        { x: 3, h: 5 },
+        { x: 8, h: 9 },
+        { x: 13, h: 13 },
+        { x: 18, h: 17 },
+      ].map((b) => (
+        <rect key={b.x} x={b.x} y={21 - b.h} width="3.4" height={b.h} rx="1.2" />
+      ))}
+      {!online && <line x1="3" y1="3" x2="21" y2="21" className="net-slash" />}
+    </svg>
+  );
+}
+
+function NetworkButton() {
+  const { showToast } = useApp();
+  const ref = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  const announce = useCallback(
+    (online: boolean) => showToast(online ? "Back online" : "You are offline — STANLEY keeps working on this device"),
+    [showToast],
+  );
+  const net = useNetworkStatus(announce);
+  const label = net.online ? "Online" : "Offline";
+  const speed = [net.effectiveType ? net.effectiveType.toUpperCase() : null, net.downlink ? `~${net.downlink} Mbps` : null, net.rtt ? `${net.rtt} ms latency` : null].filter(Boolean).join(" · ");
+
+  return (
+    <>
+      <button
+        ref={ref}
+        className={`hdr-control hdr-icon-btn hdr-net ${net.online ? "is-online" : "is-offline"}`}
+        aria-label={`Network status: ${label}`}
+        title={`Network: ${label}`}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <SignalBars online={net.online} />
+        <span className="net-dot" aria-hidden="true" />
+      </button>
+      <Popover anchor={ref} open={open} onClose={() => setOpen(false)} placement="bottom-end" width={340} label="Network status">
+        <div className={`net-panel ${net.online ? "is-online" : "is-offline"}`}>
+          <div className="net-panel-head">
+            <span className="net-panel-icon">
+              <SignalBars online={net.online} />
+            </span>
+            <div>
+              <strong>{net.online ? "You are online" : "You are offline"}</strong>
+              <small>
+                {label} since {formatTime(net.since)}
+                {net.online && speed ? ` · ${speed}` : ""}
+              </small>
+            </div>
+          </div>
+          <p>
+            {net.online
+              ? "Connected to the internet. STANLEY is offline-first, so it keeps working the same way if the connection drops."
+              : "No internet connection. STANLEY is offline-first — you can keep working on this device and nothing is blocked."}
+          </p>
+          <p className="net-note">Local storage and cloud sync are not connected yet — changes made now last for this session until the database is set up.</p>
+        </div>
+      </Popover>
+    </>
+  );
+}
 
 function NotificationsButton() {
   const { notifications, markRead, markAllRead, navigate } = useApp();

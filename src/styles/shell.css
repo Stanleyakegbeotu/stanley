@@ -507,8 +507,9 @@ button.sb-avatar {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  margin: 14px 14px 0 0;
-  border-radius: var(--r-shell) var(--r-shell) 0 0;
+  /* Floats as an island on the green shell: green frame on top, right and bottom. */
+  margin: 14px 14px 14px 0;
+  border-radius: var(--r-shell);
   background: var(--canvas);
   overflow: hidden;
   box-shadow: -10px 0 30px rgba(0, 0, 0, 0.12);
@@ -655,21 +656,38 @@ button.sb-avatar {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   padding: 0 6px 0 18px;
   white-space: nowrap;
 }
 
-.hdr-datetime > span {
-  font-size: 16px;
+.dt-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 17px;
   font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.dt-date svg {
+  color: var(--brand-600);
+}
+
+.dt-short {
+  display: none;
 }
 
 .hdr-time {
-  padding: 9px 14px;
+  min-width: 104px;
+  padding: 9px 16px;
   border-radius: 12px;
-  font-size: 15.5px;
-  font-weight: 600;
+  text-align: center;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
   color: #fff;
   background: var(--brand-700);
 }
@@ -739,15 +757,6 @@ button.sb-avatar {
   color: var(--brand-700);
 }
 
-@media (max-width: 1360px) {
-  .hdr-datetime > span {
-    display: none;
-  }
-  .hdr-datetime {
-    padding-left: 6px;
-  }
-}
-
 @media (max-width: 1180px) {
   .topbar {
     padding: 0 20px;
@@ -756,7 +765,12 @@ button.sb-avatar {
   .ctx-select {
     min-width: 190px;
   }
-  .hdr-datetime,
+  .dt-long {
+    display: none;
+  }
+  .dt-short {
+    display: inline;
+  }
   .hdr-divider,
   .kbd {
     display: none;
@@ -764,4 +778,127 @@ button.sb-avatar {
   .page-wrap {
     padding: 22px 22px 64px;
   }
+}
+
+/* ───────────────────────── Network status (header) ───────────────────────── */
+.hdr-net .net-bars rect {
+  fill: color-mix(in srgb, var(--muted) 35%, transparent);
+  transition: fill 0.3s;
+}
+
+.hdr-net.is-online .net-bars rect,
+.net-panel.is-online .net-bars rect {
+  fill: var(--ok);
+}
+
+.hdr-net.is-offline .net-bars rect,
+.net-panel.is-offline .net-bars rect {
+  fill: color-mix(in srgb, var(--muted) 40%, transparent);
+}
+
+.net-slash {
+  stroke: var(--danger);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+}
+
+.hdr-net .net-dot {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+}
+
+.hdr-net.is-online .net-dot {
+  background: var(--ok);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 50%, transparent);
+  animation: net-pulse 2.4s ease-out infinite;
+}
+
+.hdr-net.is-offline .net-dot {
+  background: var(--danger);
+}
+
+.hdr-net.is-offline {
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--line-2));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+@keyframes net-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 45%, transparent);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 7px transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hdr-net.is-online .net-dot {
+    animation: none;
+  }
+}
+
+.net-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 10px 10px;
+}
+
+.net-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.net-panel-icon {
+  flex: none;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--ok) 11%, var(--surface));
+}
+
+.net-panel.is-offline .net-panel-icon {
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+}
+
+.net-panel-head strong {
+  display: block;
+  font-size: 15.5px;
+  font-weight: 700;
+  color: var(--ok);
+}
+
+.net-panel.is-offline .net-panel-head strong {
+  color: var(--danger);
+}
+
+.net-panel-head small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.net-panel p {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.net-panel .net-note {
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 12.5px;
+  color: var(--muted);
+  background: var(--canvas);
 }

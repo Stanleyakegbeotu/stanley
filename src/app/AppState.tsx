@@ -11,7 +11,8 @@ import {
 import { DEFAULT_THEME, isThemeId, type ThemeId } from "./themes";
 import { useHashRoute, type Route } from "./router";
 import { NOTIFICATIONS, type NotificationItem } from "@/data/demo/records";
-import { CURRENT_USER } from "@/data/demo/catalog";
+import { CURRENT_USER } from "@/data/company";
+import { BASELINE_AGENTS, EMPTY_INVENTORY_CHANGES, applyAgentEdits, mergeAgents, nextServiceId, nextUserId, type AddedService, type AgentEdit, type AgentRecord, type InventoryChanges } from "@/data/userRecords";
 import type { PeriodSelection } from "@/data/types";
 
 /* localStorage is a per-viewer convenience only; every read/write is guarded. */
@@ -55,6 +56,20 @@ interface AppStateValue {
   clearAssistantQuestion: () => void;
   signOutOpen: boolean;
   setSignOutOpen: (v: boolean) => void;
+  /** Legacy baseline agents + agents created in the app (baseline is never modified). */
+  agents: AgentRecord[];
+  userAgents: AgentRecord[];
+  addAgent: (a: { name: string; phone: string; hospital: string }) => AgentRecord;
+  /** Session-only profile changes to legacy agents (name, phone, hospital transfer). */
+  agentEdits: Record<number, AgentEdit>;
+  editAgent: (id: number, edit: { name: string; phone: string; hospital: string }) => void;
+  revertAgent: (id: number) => void;
+  /** Session-only inventory changes layered over the read-only legacy catalogue. */
+  inventory: InventoryChanges;
+  renameCategory: (key: string, name: string) => void;
+  editService: (id: number, edit: { name?: string; price?: number | null }) => void;
+  revertService: (id: number) => void;
+  addService: (s: Omit<AddedService, "id" | "createdAt">) => AddedService;
 }
 
 const Ctx = createContext<AppStateValue | null>(null);
@@ -86,6 +101,83 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [assistantQuestion, setAssistantQuestion] = useState<string | null>(null);
   const [signOutOpen, setSignOutOpen] = useState(false);
+  const [userAgents, setUserAgents] = useState<AgentRecord[]>([]);
+  const [agentEdits, setAgentEdits] = useState<Record<number, AgentEdit>>({});
+  // Everyone reading `agents` sees edits (e.g. transfers); the legacy export itself is never changed.
+  const agents = useMemo(() => applyAgentEdits(mergeAgents(userAgents), agentEdits), [userAgents, agentEdits]);
+  const editAgent = useCallback(
+    (id: number, edit: { name: string; phone: string; hospital: string }) => {
+      const clean = { name: edit.name.trim(), phone: edit.phone.trim() || "N/A", hospital: edit.hospital };
+      if (userAgents.some((a) => a.id === id)) {
+        setUserAgents((list) => list.map((a) => (a.id === id ? { ...a, ...clean } : a)));
+        return;
+      }
+      setAgentEdits((e) => ({ ...e, [id]: { ...clean, at: new Date().toISOString() } }));
+    },
+    [userAgents],
+  );
+  const revertAgent = useCallback(
+    (id: number) =>
+      setAgentEdits((e) => {
+        const next = { ...e };
+        delete next[id];
+        return next;
+      }),
+    [],
+  );
+  const [inventory, setInventory] = useState<InventoryChanges>(EMPTY_INVENTORY_CHANGES);
+  const renameCategory = useCallback(
+    (key: string, name: string) =>
+      setInventory((inv) => {
+        const categoryNames = { ...inv.categoryNames };
+        if (name.trim() && name.trim() !== key) categoryNames[key] = name.trim();
+        else delete categoryNames[key];
+        return { ...inv, categoryNames };
+      }),
+    [],
+  );
+  const editService = useCallback(
+    (id: number, edit: { name?: string; price?: number | null }) =>
+      setInventory((inv) => {
+        const added = inv.added.find((s) => s.id === id);
+        if (added) return { ...inv, added: inv.added.map((s) => (s.id === id ? { ...s, name: edit.name ?? s.name, price: edit.price ?? s.price } : s)) };
+        return { ...inv, edits: { ...inv.edits, [id]: { ...edit, at: new Date().toISOString() } } };
+      }),
+    [],
+  );
+  const revertService = useCallback(
+    (id: number) =>
+      setInventory((inv) => {
+        const edits = { ...inv.edits };
+        delete edits[id];
+        return { ...inv, edits };
+      }),
+    [],
+  );
+  const addService = useCallback(
+    (s: Omit<AddedService, "id" | "createdAt">) => {
+      const record: AddedService = { ...s, id: nextServiceId(inventory.added), createdAt: new Date().toISOString() };
+      setInventory((inv) => ({ ...inv, added: [...inv.added, record] }));
+      return record;
+    },
+    [inventory.added],
+  );
+  const addAgent = useCallback(
+    (a: { name: string; phone: string; hospital: string }) => {
+      const record: AgentRecord = {
+        id: nextUserId(userAgents),
+        name: a.name.trim(),
+        phone: a.phone.trim() || "N/A",
+        hospital: a.hospital,
+        order: BASELINE_AGENTS.length + userAgents.length,
+        source: "user",
+        createdAt: new Date().toISOString(),
+      };
+      setUserAgents((list) => [...list, record]);
+      return record;
+    },
+    [userAgents],
+  );
 
   // Theme tokens live on <html> so portals (popovers, modals) inherit them.
   useLayoutEffect(() => {
@@ -166,8 +258,19 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       clearAssistantQuestion: () => setAssistantQuestion(null),
       signOutOpen,
       setSignOutOpen,
+      agents,
+      userAgents,
+      addAgent,
+      agentEdits,
+      editAgent,
+      revertAgent,
+      inventory,
+      renameCategory,
+      editService,
+      revertService,
+      addService,
     }),
-    [theme, setTheme, collapsed, setCollapsed, context, period, route, navigate, notifications, markRead, markAllRead, toast, showToast, assistantOpen, assistantQuestion, askAssistant, signOutOpen],
+    [theme, setTheme, collapsed, setCollapsed, context, period, route, navigate, notifications, markRead, markAllRead, toast, showToast, assistantOpen, assistantQuestion, askAssistant, signOutOpen, agents, userAgents, addAgent, agentEdits, editAgent, revertAgent, inventory, renameCategory, editService, revertService, addService],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

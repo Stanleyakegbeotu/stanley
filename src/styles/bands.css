@@ -1,0 +1,82 @@
+/*
+ * Theme header bands — global.
+ *
+ * The same theme-tinted band as the "Top performing hospitals / PR agents"
+ * card header (.dc-head): a soft diagonal wash of the selected theme colour,
+ * a corner glow and a tinted hairline. Applied to every table header, every
+ * table-card toolbar / panel header and every filter card, so none of them
+ * look plain. One theme colour only — follows the selected app theme.
+ *
+ * Loaded last (see index.css) so it is the single source for these surfaces.
+ */
+:root {
+  --band-wash: linear-gradient(120deg, color-mix(in srgb, var(--brand-600) 10%, var(--surface)) 0%, color-mix(in srgb, var(--brand-600) 3%, var(--surface)) 55%, var(--surface) 100%);
+  --band-glow: radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--brand-600) 16%, transparent) 0, transparent 190px);
+  --band-line: color-mix(in srgb, var(--brand-600) 14%, var(--line));
+  --band-ink: color-mix(in srgb, var(--brand-600) 62%, var(--ink-2));
+}
+
+/* ─────────────── Table headers (all tables) ─────────────── */
+/* The band is painted once across the whole header row (on <thead>), not per cell. */
+:is(.table, .bp-table, .inv-table) thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--band-glow), var(--band-wash), var(--surface);
+}
+
+:is(.table, .bp-table, .inv-table) thead th,
+:is(.table, .bp-table, .inv-table) thead th:first-child,
+:is(.modal.data, .bw, .inv, .ap) .bp-table thead th {
+  background: transparent;
+  color: var(--band-ink);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--band-line);
+}
+
+/* Sort buttons inside headers take the header colour. */
+:is(.table, .bp-table, .inv-table) thead th :is(button, .bp-sort) {
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+}
+
+/* ─────────────── Table-card headers & toolbars ─────────────── */
+.inv-table-tools,
+.panel > .card-head {
+  position: relative;
+  background: var(--band-glow), var(--band-wash);
+  border-bottom: 1px solid var(--band-line);
+}
+
+/* Panel (title + table) header bleeds to the card edges like the referral cards. */
+.panel.card-pad > .card-head {
+  margin: -22px -24px 18px;
+  padding: 18px 24px;
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+}
+
+/* ─────────────── Filter cards ─────────────── */
+.rf-filters,
+:is(.modal.data, .bw, .inv, .ap) .rf-filters,
+.inv-toolbar,
+.bw-toolbar,
+.ap-filter {
+  background: var(--band-glow), var(--band-wash), var(--surface);
+  border: 1px solid var(--band-line);
+}
+
+/* The agent-profile period filter was an unboxed row — give it the card shape. */
+.ap-filter {
+  padding: 12px 14px;
+  border-radius: 16px;
+}
+
+/* Inputs and segmented controls stay crisp white on the tinted band. */
+:is(.rf-filters, .inv-toolbar, .inv-table-tools, .bw-toolbar, .ap-filter) :is(.search-input, .rf-date, .select-btn) {
+  background-color: var(--surface);
+}

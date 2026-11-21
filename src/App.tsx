@@ -3,7 +3,7 @@ import { AnimatePresence, MotionConfig, motion } from "framer-motion";
 import { CheckCheck, LogOut } from "lucide-react";
 import { AppStateProvider, useApp } from "@/app/AppState";
 import { branchRoute, type Route } from "@/app/router";
-import { getBranch } from "@/data/demo/catalog";
+import { getBranch } from "@/data/company";
 import { EASE } from "@/shared/motion";
 import { Button } from "@/shared/ui/controls";
 import { Modal } from "@/shared/ui/Modal";

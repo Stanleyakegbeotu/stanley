@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Minimize2, Send, Sparkles } from "lucide-react";
+import { Send, Sparkles, X } from "lucide-react";
 import { useApp } from "@/app/AppState";
 import { branchRoute } from "@/app/router";
-import { getBranch } from "@/data/demo/catalog";
+import { getBranch } from "@/data/company";
 import type { DateRange } from "@/data/types";
 import { Reveal, useMotionPreset } from "@/shared/motion";
 import { Button } from "@/shared/ui/controls";
@@ -136,8 +136,8 @@ export function AssistantDock() {
                 {scope} · {periodLabel(period)}
               </small>
             </div>
-            <button className="icon-btn" onClick={() => setAssistantOpen(false)} aria-label="Minimise assistant">
-              <Minimize2 size={17} />
+            <button className="icon-btn" onClick={() => setAssistantOpen(false)} aria-label="Close STANLEY Intelligence" data-close>
+              <X size={18} />
             </button>
           </div>
           <div className="intel-messages thin-scroll" ref={list} aria-live="polite">
@@ -174,11 +174,15 @@ export function AssistantDock() {
           exit={{ opacity: 0, y: 8 }}
           whileTap={m.press}
           aria-label="Open STANLEY Intelligence"
+          title="STANLEY Intelligence"
         >
-          <span className="intel-mark">
-            <Sparkles size={18} />
+          {/* Collapsed to a circle; the name rolls out on hover / keyboard focus. */}
+          <span className="intel-launcher-label" aria-hidden="true">
+            STANLEY Intelligence
           </span>
-          STANLEY Intelligence
+          <span className="intel-mark">
+            <Sparkles size={20} />
+          </span>
         </motion.button>
       )}
     </AnimatePresence>

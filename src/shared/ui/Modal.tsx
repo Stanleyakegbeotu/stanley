@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { X } from "lucide-react";
+import { X, type LucideIcon } from "lucide-react";
 import { useMotionPreset } from "@/shared/motion";
 
 interface ModalProps {
@@ -10,12 +10,19 @@ interface ModalProps {
   title: string;
   description?: string;
   wide?: boolean;
+  /** Extra-large dialog for detailed analysis views. */
+  xl?: boolean;
+  /**
+   * Data-view styling: a theme-tinted header band with this icon, KPI-style
+   * summary tiles and a styled table (used by the dashboard "view all" pop-ups).
+   */
+  icon?: LucideIcon;
   footer?: ReactNode;
   children: ReactNode;
 }
 
 /** Themed dialog. Escape and backdrop click close it; focus moves inside on open. */
-export function Modal({ open, onClose, title, description, wide, footer, children }: ModalProps) {
+export function Modal({ open, onClose, title, description, wide, xl, icon: Icon, footer, children }: ModalProps) {
   const m = useMotionPreset();
   const titleId = useId();
   const box = useRef<HTMLDivElement>(null);
@@ -24,7 +31,11 @@ export function Modal({ open, onClose, title, description, wide, footer, childre
   useEffect(() => {
     if (!open) return;
     opener.current = document.activeElement as HTMLElement | null;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => {
+      // Only the top-most dialog layer reacts, so Escape never closes a stack at once.
+      const layers = document.querySelectorAll(".modal-layer");
+      if (e.key === "Escape" && layers[layers.length - 1] === box.current?.parentElement) onClose();
+    };
     document.addEventListener("keydown", onKey);
     const id = window.requestAnimationFrame(() => {
       box.current?.querySelector<HTMLElement>("input, select, textarea, button:not([data-close])")?.focus();
@@ -48,7 +59,7 @@ export function Modal({ open, onClose, title, description, wide, footer, childre
         >
           <motion.div
             ref={box}
-            className={`modal ${wide ? "wide" : ""}`}
+            className={`modal ${xl ? "xl" : wide ? "wide" : ""} ${Icon ? "data" : ""}`}
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
@@ -57,7 +68,12 @@ export function Modal({ open, onClose, title, description, wide, footer, childre
             exit={m.modal.exit}
           >
             <div className="modal-head">
-              <div>
+              {Icon && (
+                <span className="modal-icon" aria-hidden="true">
+                  <Icon size={21} strokeWidth={2} />
+                </span>
+              )}
+              <div className="modal-titles">
                 <h2 id={titleId}>{title}</h2>
                 {description && <p>{description}</p>}
               </div>

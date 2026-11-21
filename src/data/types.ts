@@ -10,6 +10,8 @@ export type BranchStatus = "Active" | "Inactive";
 
 export interface Branch {
   id: string;
+  /** Legacy/system branch code, e.g. "BR001". */
+  code: string;
   name: string;
   city: string;
   country: string;
@@ -60,10 +62,23 @@ export interface DayRecord {
   completedOrders: number;
   transactions: number;
   revenue: number;
+  /** paidAtVisit + recovered. */
   payments: number;
+  /** Paid by the day's patients at their visit (sum of the visit lines). */
+  paidAtVisit: number;
+  /** Older patient balances settled today (oldest first). */
+  recovered: number;
   expenses: number;
   prCommission: number;
+  /** Aligned with SERVICES (the real catalogue). */
   serviceCounts: number[];
+  /** One entry per referred patient: the legacy PR agent id and that patient's billed value. */
+  referralAgentIds: number[];
+  referralRevenue: number[];
+  /** Service indices (into SERVICES) per patient visit; length = patients. */
+  visitBaskets: number[][];
+  /** Visit index of each referred patient, aligned with referralAgentIds. */
+  referredPatients: number[];
   paymentsByMethod: number[]; // aligned with PAYMENT_METHODS
   expensesByCategory: number[]; // aligned with EXPENSE_CATEGORIES
   /** End-of-day position of unpaid patient balances. */

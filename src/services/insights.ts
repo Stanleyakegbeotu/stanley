@@ -5,8 +5,10 @@
  * invented here. When a language-model connector is added later, it must call
  * these same services for numbers and only phrase the results.
  */
-import { BRANCHES, getBranch } from "@/data/demo/catalog";
-import { INVENTORY, PENDING_APPROVALS, ACTIVITY } from "@/data/demo/records";
+import { BRANCHES, getBranch } from "@/data/company";
+import { PENDING_APPROVALS, ACTIVITY } from "@/data/demo/records";
+import { LEGACY_BRANCH_ID } from "@/data/legacy";
+import { CATALOGUE_INVENTORY } from "@/data/catalogueRules";
 import { addDays } from "@/data/demo/generator";
 import type { Currency, DateRange } from "@/data/types";
 import { formatCount, formatMoney, formatPct, moneyEntries } from "@/shared/format";
@@ -88,21 +90,17 @@ export function attentionItems(branchIds: string[], range: DateRange, includeCom
     });
   }
 
-  // 3. Inventory below reorder level.
-  const low = INVENTORY.filter((i) => branchIds.includes(i.branchId) && i.stock < i.reorderLevel);
-  const critical = low.filter((i) => i.stock <= i.reorderLevel * 0.5);
-  if (low.length) {
+  // 3. Real catalogue data-quality issue: services with no price on file cannot be billed.
+  const unpriced = branchIds.includes(LEGACY_BRANCH_ID) ? CATALOGUE_INVENTORY.filter((i) => i.price === null) : [];
+  if (unpriced.length) {
     items.push({
-      id: "inventory",
-      severity: critical.length ? "urgent" : "attention",
-      title: `${low.length} inventory item${low.length > 1 ? "s" : ""} below reorder level`,
-      detail: low
-        .slice(0, 3)
-        .map((i) => `${i.name} — ${i.stock}/${i.reorderLevel} ${i.unit}s at ${getBranch(i.branchId)?.name}`)
-        .join(" · "),
-      branchId: null,
-      route: "/inventory?filter=low",
-      action: "Open inventory",
+      id: "unpriced",
+      severity: "attention",
+      title: `${unpriced.length} catalogue service${unpriced.length > 1 ? "s have" : " has"} no price`,
+      detail: `${unpriced.map((i) => `${i.name} (#${i.id})`).join(" · ")} — confirm prices with the owner before these can be billed.`,
+      branchId: LEGACY_BRANCH_ID,
+      route: "/inventory?filter=noprice",
+      action: "Open catalogue",
     });
   }
 

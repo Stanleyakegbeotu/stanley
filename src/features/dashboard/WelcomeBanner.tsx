@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { motion } from "framer-motion";
+import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { motion, useReducedMotion } from "framer-motion";
 import { ChevronDown } from "lucide-react";
 import { useApp } from "@/app/AppState";
 import { isoDate } from "@/data/demo/generator";
@@ -147,50 +147,112 @@ function MoneyValues({ money }: { money: Summary["revenue"] }) {
   );
 }
 
-function LiveStrip({ summary }: { summary: Summary }) {
+function TickerItems({ summary }: { summary: Summary }) {
   const count = (n: number) => formatCount(n);
   return (
-    <div className="hero-strip" role="list" aria-label="Company-wide live indicators">
-      <span className="live-pill" role="listitem">
-        <span className="live-dot pulse" />
-        LIVE
-      </span>
-      <span className="strip-item" role="listitem">
+    <>
+      <li className="strip-item">
         <i style={{ background: "#8cc8ff" }} />
         Generated <MoneyValues money={summary.revenue} />
-      </span>
-      <span className="strip-item" role="listitem">
+      </li>
+      <li className="strip-item">
         <i style={{ background: "#ff9a8f" }} />
         Outstanding balances <MoneyValues money={summary.outstanding} />
-      </span>
-      <span className="strip-item" role="listitem">
+      </li>
+      <li className="strip-item">
         <i style={{ background: "#6fe3c6" }} />
         Payment transactions{" "}
         <b>
           <CountUp value={summary.transactions} format={count} />
         </b>
-      </span>
-      <span className="strip-item" role="listitem" title="Counted per day; production counts distinct patient IDs across the period">
+      </li>
+      <li className="strip-item" title="Counted per day; production counts distinct patient IDs across the period">
         <i style={{ background: "#9db8ff" }} />
         Unique patients{" "}
         <b>
           <CountUp value={summary.patients} format={count} />
         </b>
-      </span>
-      <span className="strip-item" role="listitem">
+      </li>
+      <li className="strip-item">
         <i style={{ background: "#c7a8ff" }} />
         New patients{" "}
         <b>
           <CountUp value={summary.newPatients} format={count} />
         </b>
-      </span>
-      <span className="strip-item" role="listitem">
+      </li>
+      <li className="strip-item">
         <i style={{ background: "#6fe3c6" }} />
         Referrals{" "}
         <b>
           <CountUp value={summary.referrals} format={count} />
         </b>
-      </span>
+      </li>
+    </>
+  );
+}
+
+/** Pixels per second the ticker travels. */
+const TICKER_SPEED = 60;
+
+/**
+ * News-style ticker: indicators enter from the right edge and travel left into
+ * the LIVE button, looping seamlessly. The LIVE button pauses/resumes it
+ * (hovering or focusing the ticker also pauses). Reduced motion shows a static row.
+ */
+function LiveStrip({ summary }: { summary: Summary }) {
+  const reduced = useReducedMotion();
+  const [paused, setPaused] = useState(false);
+  const viewport = useRef<HTMLDivElement>(null);
+  const group = useRef<HTMLUListElement>(null);
+  const [metrics, setMetrics] = useState({ viewport: 900, group: 1400 });
+
+  useLayoutEffect(() => {
+    const measure = () => {
+      const v = viewport.current?.clientWidth ?? 0;
+      const g = group.current?.scrollWidth ?? 0;
+      // Ignore small width changes (numbers counting up) so the speed stays steady.
+      setMetrics((m) => (Math.abs(m.viewport - v) > 40 || Math.abs(m.group - g) / Math.max(m.group, 1) > 0.12 ? { viewport: v, group: g } : m));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    if (viewport.current) ro.observe(viewport.current);
+    if (group.current) ro.observe(group.current);
+    return () => ro.disconnect();
+  }, []);
+
+  const style = {
+    "--ticker-enter-from": `${metrics.viewport}px`,
+    "--ticker-enter-duration": `${(metrics.viewport / TICKER_SPEED).toFixed(2)}s`,
+    "--ticker-loop-duration": `${(metrics.group / TICKER_SPEED).toFixed(2)}s`,
+  } as CSSProperties;
+
+  return (
+    <div className={`hero-strip ${paused ? "is-paused" : ""} ${reduced ? "is-static" : ""}`}>
+      <button
+        type="button"
+        className="live-pill"
+        aria-pressed={paused}
+        aria-label={paused ? "Resume live indicators" : "Pause live indicators"}
+        title={paused ? "Resume" : "Pause"}
+        onClick={() => setPaused((p) => !p)}
+      >
+        <span className={`live-dot ${paused ? "" : "pulse"}`} />
+        {paused ? "PAUSED" : "LIVE"}
+      </button>
+      <div className="ticker" ref={viewport} role="region" aria-label="Company-wide live indicators">
+        <div className="ticker-enter" style={style}>
+          <div className="ticker-track">
+            <ul className="ticker-group" ref={group}>
+              <TickerItems summary={summary} />
+            </ul>
+            {!reduced && (
+              <ul className="ticker-group" aria-hidden="true">
+                <TickerItems summary={summary} />
+              </ul>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
