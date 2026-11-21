@@ -19,3 +19,55 @@ logs/
 # beside it.
 /.plugins/
 /.opencode-skills/
+
+# --- Local development hardening (added during environment setup) ---
+
+# Environment files (.env* above already covers .env, .env.local, etc.)
+*.env
+
+# Private keys, certificates and credentials
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+id_rsa*
+id_ed25519*
+credentials*.json
+service-account*.json
+secrets.*
+*.secret
+
+# Local databases and machine-specific data
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+
+# Coverage, caches and temporary files
+coverage/
+.eslintcache
+*.tmp
+*.temp
+*.swp
+*~
+
+# Package manager debug output
+npm-debug.log*
+pnpm-debug.log*
+yarn-error.log*
+
+# Operating-system metadata
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+._*
+
+# Editor / IDE local state (shared .vscode settings can still be committed)
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
