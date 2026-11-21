@@ -12,7 +12,7 @@
  *  4. Outstanding balances — who still owes, how much has been recovered.
  *
  * Cash basis: income = money received; costs = approved expenses + accrued PR
- * commission (placeholder rate); net profit = income − costs.
+ * commission (company or agent rate — services/commission.ts); net profit = income − costs.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
@@ -20,13 +20,13 @@ import { ArrowDownRight, ArrowUpRight, Banknote, CalendarDays, CalendarRange, Ci
 import { getBranch } from "@/data/company";
 import type { DateRange, PeriodSelection } from "@/data/types";
 import { PAYMENT_METHODS } from "@/data/types";
-import { ledger, openBalances, type LedgerEntry, type PatientVisit } from "@/data/demo/dailyLines";
+import { EXPENSE_ITEMS, ledger, openBalances, type LedgerEntry, type PatientVisit } from "@/data/demo/dailyLines";
 import { financeTotals, financeTrend, type FinanceTotals } from "@/services/finance";
 import { periodLabel, resolveRange, serviceRanking } from "@/services/analytics";
-import { DEMO_PR_COMMISSION_RATE } from "@/services/businessRules";
+import { rateSummary, useCommission } from "@/services/commission";
 import { Reveal, useMotionPreset } from "@/shared/motion";
 import { formatCount, formatMoney, formatShortDate, formatTime } from "@/shared/format";
-import { AreaLineChart, CHART_COLORS, Donut, HBarList } from "@/shared/ui/charts";
+import { AreaLineChart, CHART_COLORS, Donut, HBarList, SegmentBar, useChartTip, type Tip } from "@/shared/ui/charts";
 import { Badge, Button, EmptyState, Segmented, SelectMenu } from "@/shared/ui/controls";
 import { Modal } from "@/shared/ui/Modal";
 import { Pagination } from "@/shared/ui/Pagination";
@@ -38,6 +38,13 @@ export type LogType = "all" | "income" | "recovered" | "expenses" | "commission"
 
 const BASE_PERIOD: PeriodSelection = { key: "month" };
 
+const METHOD_HINT: Record<string, string> = {
+  Cash: "Paid in cash at the front desk.",
+  POS: "Paid by card on the POS terminal.",
+  Transfer: "Paid by bank transfer.",
+  HMO: "Covered by a health insurance (HMO) plan.",
+};
+
 export function FinanceWorkspace({ branchId, initialLog = "all", focusOutstanding = false }: { branchId: string; initialLog?: LogType; focusOutstanding?: boolean }) {
   const branch = getBranch(branchId);
   const c = branch?.currency ?? "NGN";
@@ -48,6 +55,8 @@ export function FinanceWorkspace({ branchId, initialLog = "all", focusOutstandin
   const [viewing, setViewing] = useState<PatientVisit | null>(null);
   const [expense, setExpense] = useState<LedgerEntry | null>(null);
   const outRef = useRef<HTMLElement>(null);
+  // Rebuild figures when a commission rate changes.
+  const { version } = useCommission();
 
   useEffect(() => {
     if (focusOutstanding) outRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -60,13 +69,13 @@ export function FinanceWorkspace({ branchId, initialLog = "all", focusOutstandin
         const range = resolveRange({ key });
         return { key, range, t: financeTotals(branchId, range), openBills: openBalances(branchId, range.to).length };
       }),
-    [branchId],
+    [branchId, version],
   );
 
   const label = f.period.key === "custom" ? (f.isDay ? formatShortDate(f.range.from) : "Selected dates") : periodLabel(f.period);
-  const t = useMemo(() => financeTotals(branchId, f.range), [branchId, f.range]);
-  const tr = useMemo(() => financeTrend(branchId, f.range), [branchId, f.range]);
-  const entries = useMemo(() => ledger(ids, f.range, DEMO_PR_COMMISSION_RATE), [ids, f.range]);
+  const t = useMemo(() => financeTotals(branchId, f.range), [branchId, f.range, version]);
+  const tr = useMemo(() => financeTrend(branchId, f.range), [branchId, f.range, version]);
+  const entries = useMemo(() => ledger(ids, f.range), [ids, f.range, version]);
   const balances = useMemo(() => openBalances(branchId, f.range.to), [branchId, f.range]);
   const services = useMemo(
     () =>
@@ -77,29 +86,50 @@ export function FinanceWorkspace({ branchId, initialLog = "all", focusOutstandin
         .slice(0, 6),
     [ids, f.range, c],
   );
-  const methods = useMemo(() => {
-    const totals = PAYMENT_METHODS.map(() => 0);
-    for (const e of entries) if (e.direction === "in" && e.method) totals[PAYMENT_METHODS.indexOf(e.method)] += e.amount;
-    return PAYMENT_METHODS.map((m, i) => ({ label: m, value: totals[i] }));
+  // Counts behind the charts (for the hover tooltips).
+  const stats = useMemo(() => {
+    const methodAmt = PAYMENT_METHODS.map(() => 0);
+    const methodCount = PAYMENT_METHODS.map(() => 0);
+    const catCount = new Map<string, number>();
+    let visitPays = 0;
+    let recoveries = 0;
+    let cleared = 0;
+    for (const e of entries) {
+      if (e.direction === "in" && e.method) {
+        const k = PAYMENT_METHODS.indexOf(e.method);
+        methodAmt[k] += e.amount;
+        methodCount[k] += 1;
+      }
+      if (e.kind === "visit") visitPays += 1;
+      if (e.kind === "recovery") {
+        recoveries += 1;
+        if (e.detail.includes("balance cleared")) cleared += 1;
+      }
+      if (e.direction === "out") catCount.set(e.category, (catCount.get(e.category) ?? 0) + 1);
+    }
+    return { methods: PAYMENT_METHODS.map((m, i) => ({ label: m, value: methodAmt[i], count: methodCount[i] })), catCount, visitPays, recoveries, cleared };
   }, [entries]);
+  const methods = stats.methods;
 
-  const aging = balances.reduce(
-    (a, b) => {
-      if (b.ageDays <= 30) a[0] += b.remaining;
-      else if (b.ageDays <= 60) a[1] += b.remaining;
-      else if (b.ageDays <= 90) a[2] += b.remaining;
-      else a[3] += b.remaining;
-      return a;
-    },
-    [0, 0, 0, 0],
-  );
-  const agingSegs = [
-    { label: "0–30 days", value: aging[0], color: "var(--brand-400)" },
-    { label: "31–60 days", value: aging[1], color: "var(--warn)" },
-    { label: "61–90 days", value: aging[2], color: "var(--kpi-orange)" },
-    { label: "Over 90 days", value: aging[3], color: "var(--danger)" },
+  const buckets = [
+    { label: "0–30 days", color: "var(--brand-400)", test: (d: number) => d <= 30, hint: "Visits from the last 30 days that still have a balance." },
+    { label: "31–60 days", color: "var(--warn)", test: (d: number) => d > 30 && d <= 60, hint: "Balances one to two months old." },
+    { label: "61–90 days", color: "var(--kpi-orange)", test: (d: number) => d > 60 && d <= 90, hint: "Balances two to three months old." },
+    { label: "Over 90 days", color: "var(--danger)", test: (d: number) => d > 90, hint: "Balances more than three months old — the hardest to recover." },
   ];
-  const agingTotal = aging.reduce((a, b) => a + b, 0);
+  const agingSegs = buckets.map((b) => {
+    const list = balances.filter((x) => b.test(x.ageDays));
+    return {
+      label: b.label,
+      color: b.color,
+      value: list.reduce((s, x) => s + x.remaining, 0),
+      hint: b.hint,
+      rows: [
+        { label: "Open bills", value: formatCount(list.length) },
+        { label: "Largest balance", value: list.length ? money(Math.max(...list.map((x) => x.remaining))) : "—" },
+      ],
+    };
+  });
 
   return (
     <div className="inv fin">
@@ -177,17 +207,17 @@ export function FinanceWorkspace({ branchId, initialLog = "all", focusOutstandin
             <Reveal hover className="card card-pad span-8">
               <div className="card-head">
                 <div>
-                  <h3>Income vs costs</h3>
-                  <p>{tr.note} · costs = expenses + PR commission</p>
+                  <h3>Income vs expenses</h3>
+                  <p>{tr.note} · expenses include PR commission</p>
                 </div>
                 <div className="chart-legend">
                   <span>
                     <i style={{ background: "var(--brand-600)" }} />
-                    Money in
+                    Income
                   </span>
                   <span>
                     <i style={{ background: "var(--kpi-orange)" }} />
-                    Costs
+                    Expenses
                   </span>
                   <span>
                     <i style={{ background: "var(--brand-400)" }} />
@@ -199,8 +229,8 @@ export function FinanceWorkspace({ branchId, initialLog = "all", focusOutstandin
                 labels={tr.labels}
                 format={(n) => money(n, true)}
                 series={[
-                  { key: "in", label: "Money in", color: "var(--brand-600)", values: tr.income, area: true },
-                  { key: "cost", label: "Costs", color: "var(--kpi-orange)", values: tr.costs, dashed: true },
+                  { key: "in", label: "Income", color: "var(--brand-600)", values: tr.income, area: true },
+                  { key: "cost", label: "Expenses", color: "var(--kpi-orange)", values: tr.costs, dashed: true },
                   { key: "bill", label: "Billed", color: "var(--brand-400)", values: tr.billed },
                 ]}
               />
@@ -217,9 +247,28 @@ export function FinanceWorkspace({ branchId, initialLog = "all", focusOutstandin
                 centerLabel="Money in"
                 centerValue={money(t.income, true)}
                 format={(n) => money(n, true)}
+                tipFormat={(n) => money(n)}
                 segments={[
-                  { label: "Paid at visit", value: t.paidAtVisit, color: "var(--brand-600)" },
-                  { label: "Recovered", value: t.recovered, color: "var(--brand-400)" },
+                  {
+                    label: "Paid at visit",
+                    value: t.paidAtVisit,
+                    color: "var(--brand-600)",
+                    hint: "Money patients paid on the day of their visit.",
+                    rows: [
+                      { label: "Payments", value: formatCount(stats.visitPays) },
+                      { label: "Average payment", value: stats.visitPays ? money(t.paidAtVisit / stats.visitPays) : "—" },
+                    ],
+                  },
+                  {
+                    label: "Recovered",
+                    value: t.recovered,
+                    color: "var(--brand-400)",
+                    hint: "Older patient balances paid back in this period (oldest bills first).",
+                    rows: [
+                      { label: "Repayments", value: formatCount(stats.recoveries) },
+                      { label: "Balances cleared", value: formatCount(stats.cleared) },
+                    ],
+                  },
                 ]}
               />
             </Reveal>
@@ -231,7 +280,7 @@ export function FinanceWorkspace({ branchId, initialLog = "all", focusOutstandin
                   <p>{tr.note} · money in minus costs. Bars below the line are losses (e.g. salary days).</p>
                 </div>
               </div>
-              <ProfitBars labels={tr.labels} values={tr.net} format={(n) => money(n, true)} />
+              <ProfitBars labels={tr.labels} values={tr.net} income={tr.income} costs={tr.costs} bucket={tr.note} format={(n) => money(n, true)} exact={(n) => money(n)} />
             </Reveal>
 
             <Reveal hover className="card card-pad span-4">
@@ -241,7 +290,22 @@ export function FinanceWorkspace({ branchId, initialLog = "all", focusOutstandin
                   <p>Money received by method · from the finance log</p>
                 </div>
               </div>
-              <Donut centerLabel="Received" centerValue={money(t.income, true)} format={(n) => money(n, true)} segments={methods.map((x, i) => ({ label: x.label, value: x.value, color: CHART_COLORS[i] }))} />
+              <Donut
+                centerLabel="Received"
+                centerValue={money(t.income, true)}
+                format={(n) => money(n, true)}
+                tipFormat={(n) => money(n)}
+                segments={methods.map((x, i) => ({
+                  label: x.label,
+                  value: x.value,
+                  color: CHART_COLORS[i],
+                  hint: METHOD_HINT[x.label],
+                  rows: [
+                    { label: "Payments", value: formatCount(x.count) },
+                    { label: "Average payment", value: x.count ? money(x.value / x.count) : "—" },
+                  ],
+                }))}
+              />
             </Reveal>
 
             <Reveal hover className="card card-pad span-4">
@@ -253,10 +317,31 @@ export function FinanceWorkspace({ branchId, initialLog = "all", focusOutstandin
               </div>
               {t.costs > 0 ? (
                 <HBarList
+                  valueLabel="Spent"
                   items={[...t.expensesByCategory, { label: "PR commission", value: t.commission }]
                     .filter((x) => x.value > 0)
                     .sort((a, b) => b.value - a.value)
-                    .map((x) => ({ label: x.label, value: x.value, display: money(x.value, true), hint: `${t.costs ? Math.round((x.value / t.costs) * 100) : 0}% of costs`, color: "var(--kpi-orange)" }))}
+                    .map((x) => {
+                      const n = stats.catCount.get(x.label) ?? 0;
+                      return {
+                        label: x.label,
+                        value: x.value,
+                        display: money(x.value, true),
+                        tipValue: money(x.value),
+                        color: "var(--kpi-orange)",
+                        tip: [
+                          { label: "Share of all expenses", value: t.costs ? `${((x.value / t.costs) * 100).toFixed(1)}%` : "—" },
+                          { label: x.label === "PR commission" ? "Days accrued" : "Expense entries", value: formatCount(n) },
+                          { label: "Share of money in", value: t.income ? `${((x.value / t.income) * 100).toFixed(1)}%` : "—" },
+                        ],
+                        hint:
+                          x.label === "PR commission"
+                            ? `Commission on referred patients' bills · ${rateSummary()}.`
+                            : EXPENSE_ITEMS[x.label]
+                              ? `Includes: ${EXPENSE_ITEMS[x.label].join(", ")}.`
+                              : undefined,
+                      };
+                    })}
                 />
               ) : (
                 <div className="empty">No costs in this period.</div>
@@ -271,7 +356,22 @@ export function FinanceWorkspace({ branchId, initialLog = "all", focusOutstandin
                 </div>
               </div>
               {services.length ? (
-                <HBarList items={services.map((x) => ({ label: x.name, value: x.value, display: money(x.value, true), hint: `${formatCount(x.count)} performed`, color: "var(--brand-500)" }))} />
+                <HBarList
+                  valueLabel="Billed"
+                  items={services.map((x) => ({
+                    label: x.name,
+                    value: x.value,
+                    display: money(x.value, true),
+                    tipValue: money(x.value),
+                    color: "var(--brand-500)",
+                    tip: [
+                      { label: "Times performed", value: formatCount(x.count) },
+                      { label: "Price per test", value: x.count ? money(x.value / x.count) : "—" },
+                      { label: "Share of all billing", value: t.billed ? `${((x.value / t.billed) * 100).toFixed(1)}%` : "—" },
+                    ],
+                    hint: "Billed value of this test in the period (catalogue price × times performed).",
+                  }))}
+                />
               ) : (
                 <div className="empty">No services billed in this period.</div>
               )}
@@ -299,18 +399,7 @@ export function FinanceWorkspace({ branchId, initialLog = "all", focusOutstandin
                 </div>
               </div>
               <div className="hint">Ageing of outstanding balances</div>
-              <div className="aging" role="img" aria-label="Outstanding balance ageing">
-                {agingSegs.map((a) => (a.value > 0 ? <div key={a.label} style={{ flex: agingTotal ? a.value / agingTotal : 0, background: a.color }} title={`${a.label}: ${money(a.value)}`} /> : null))}
-              </div>
-              <div className="aging-legend">
-                {agingSegs.map((a) => (
-                  <div key={a.label}>
-                    <i style={{ background: a.color }} />
-                    <span>{a.label}</span>
-                    <b>{money(a.value, true)}</b>
-                  </div>
-                ))}
-              </div>
+              <SegmentBar segments={agingSegs} format={(n) => money(n, true)} tipFormat={(n) => money(n)} totalLabel="outstanding" ariaLabel="Outstanding balance ageing" />
             </Reveal>
           </Reveal>
         </div>
@@ -329,7 +418,7 @@ export function FinanceWorkspace({ branchId, initialLog = "all", focusOutstandin
       </section>
 
       <p className="lg-muted" style={{ fontSize: 13 }}>
-        Read-only for Company Admin. Demonstration activity built from the real catalogue, prices and PR agents; it reconciles line by line. PR commission uses the placeholder rate ({Math.round(DEMO_PR_COMMISSION_RATE * 100)}%) until the real rate is confirmed.
+        Read-only for Company Admin. Demonstration activity built from the real catalogue, prices and PR agents; it reconciles line by line. PR commission: {rateSummary()} (change it on the PR page).
       </p>
 
       {viewing && <PatientRecordModal visit={viewing} onClose={() => setViewing(null)} />}
@@ -347,7 +436,7 @@ function PositionCard({ title, range, t, openBills, money }: { title: string; ra
   const rows: { icon: LucideIcon; label: string; value: string; sub?: string; tone?: "out" | "due" }[] = [
     { icon: Wallet, label: "Money in", value: money(t.income), sub: `${money(t.paidAtVisit, true)} at visits · ${money(t.recovered, true)} recovered` },
     { icon: Receipt, label: "Expenses", value: `− ${money(t.expenses)}`, tone: "out" },
-    { icon: HandCoins, label: "PR commission", value: `− ${money(t.commission)}`, sub: "Accrued · placeholder rate", tone: "out" },
+    { icon: HandCoins, label: "PR commission", value: `− ${money(t.commission)}`, sub: `Accrued · ${rateSummary()}`, tone: "out" },
     { icon: Banknote, label: "Billed (revenue)", value: money(t.billed), sub: `${formatCount(t.patients)} patients` },
     { icon: RotateCcw, label: "Balances recovered", value: money(t.recovered) },
     { icon: Scale, label: "Outstanding (end)", value: money(t.outstanding), sub: `${formatCount(openBills)} open bills`, tone: "due" },
@@ -388,8 +477,37 @@ function PositionCard({ title, range, t, openBills, money }: { title: string; ra
 
 /* ─────────────── Profit / loss bars (handles negatives) ─────────────── */
 
-function ProfitBars({ labels, values, format }: { labels: string[]; values: number[]; format: (n: number) => string }) {
+function ProfitBars({
+  labels,
+  values,
+  income,
+  costs,
+  bucket,
+  format,
+  exact,
+}: {
+  labels: string[];
+  values: number[];
+  income: number[];
+  costs: number[];
+  /** "Daily totals" / "Weekly totals (week starting)" / … */
+  bucket: string;
+  format: (n: number) => string;
+  exact: (n: number) => string;
+}) {
   const reduced = useReducedMotion();
+  const tip = useChartTip();
+  const period = (i: number) => (bucket.startsWith("Weekly") ? `Week of ${labels[i]}` : labels[i]);
+  const tipOf = (i: number): Tip => ({
+    title: period(i),
+    rows: [
+      { label: "Income", value: exact(income[i] ?? 0), color: "var(--brand-600)" },
+      { label: "Expenses", value: exact(costs[i] ?? 0), color: "var(--kpi-orange)" },
+      { label: values[i] < 0 ? "Net loss" : "Net profit", value: exact(values[i] ?? 0), color: values[i] < 0 ? "var(--danger)" : "var(--brand-700)" },
+      { label: "Margin", value: income[i] ? `${((values[i] / income[i]) * 100).toFixed(1)}%` : "—" },
+    ],
+    note: values[i] < 0 ? "Expenses were higher than income in this period (often a salary or maintenance day)." : "Income left after expenses and PR commission.",
+  });
   const max = Math.max(1, ...values.map((v) => Math.max(0, v)));
   const min = Math.min(0, ...values);
   const span = max - min || 1;
@@ -399,10 +517,11 @@ function ProfitBars({ labels, values, format }: { labels: string[]; values: numb
   const worst = values.length ? Math.min(...values) : 0;
   return (
     <div className="fin-bars-wrap">
-      <div className="fin-bars" role="img" aria-label="Net profit by period">
+      <div className="fin-bars chart-hoverable" role="img" aria-label="Net profit by period" ref={tip.ref} onMouseLeave={tip.hide}>
         <i className="fin-zero" style={{ top: `${zero}%` }} />
+        {tip.layer}
         {values.map((v, i) => (
-          <div key={i} className="fin-bar" title={`${labels[i]}: ${format(v)}`}>
+          <div key={i} className={`fin-bar ${tip.active === String(i) ? "is-hover" : tip.active ? "is-dim" : ""}`} onMouseMove={(e) => tip.show(e, tipOf(i), String(i))}>
             <motion.span
               className={v < 0 ? "is-loss" : ""}
               style={v >= 0 ? { bottom: `${100 - zero}%`, height: `${(v / span) * 100}%`, transformOrigin: "bottom" } : { top: `${zero}%`, height: `${(-v / span) * 100}%`, transformOrigin: "top" }}

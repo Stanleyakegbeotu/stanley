@@ -4,6 +4,7 @@
  * workspace: patients, inventory, staff, PR agents, hospitals, finance and
  * expenses, daily reports and the audit log, all for a chosen period.
  */
+import { rateSummary } from "@/services/commission";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
@@ -574,7 +575,7 @@ function AgentsTab({ agents, activity, currency: c }: { agents: ReturnType<typeo
           { label: "PR agents", icon: Handshake, value: formatCount(agents.length), caption: `${formatCount(agents.filter((a) => hospitalKey(a.hospital)).length)} with a hospital` },
           { label: "Referred in period", icon: TrendingUp, value: formatCount(referred.length), caption: `${formatCount(referred.reduce((a, x) => a + x.referrals, 0))} referrals` },
           { label: "Revenue generated", icon: Banknote, value: formatMoney(revenue, c), caption: "Billed value of referred tests" },
-          { label: "Commission earned", icon: Percent, value: formatMoney(commission, c), caption: "Placeholder rate until confirmed" },
+          { label: "Commission earned", icon: Percent, value: formatMoney(commission, c), caption: rateSummary() },
         ]}
       />
       <Toolbar count={`${formatCount(rows.length)} agents`}>

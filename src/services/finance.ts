@@ -11,6 +11,7 @@
 import { DAILY, DATA_START, TODAY, addDays, diffDays, isoDate } from "@/data/demo/generator";
 import type { DateRange, DayRecord } from "@/data/types";
 import { EXPENSE_CATEGORIES } from "@/data/types";
+import { dayCommission } from "./commission";
 
 export interface FinanceTotals {
   billed: number;
@@ -49,7 +50,7 @@ export function financeTotals(branchId: string, r: DateRange): FinanceTotals {
     t.paidAtVisit += d.paidAtVisit;
     t.recovered += d.recovered;
     t.expenses += d.expenses;
-    t.commission += d.prCommission;
+    t.commission += dayCommission(d);
     t.patients += d.patients;
     t.transactions += d.transactions;
     d.expensesByCategory.forEach((v, i) => (byCat[i] += v));
@@ -101,7 +102,7 @@ export function financeTrend(branchId: string, r: DateRange): FinanceTrend {
     const rec = all[diffDays(DATA_START, d)];
     if (rec) {
       e.income += rec.payments;
-      e.costs += rec.expenses + rec.prCommission;
+      e.costs += rec.expenses + dayCommission(rec);
       e.billed += rec.revenue;
       e.recovered += rec.recovered;
     }

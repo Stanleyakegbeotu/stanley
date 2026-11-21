@@ -9,6 +9,7 @@ import { useMemo } from "react";
 import { useApp } from "@/app/AppState";
 import { LEGACY_BRANCH_ID } from "@/data/legacy";
 import { agentRanking, periodLabel, resolveRange, serviceRanking } from "@/services/analytics";
+import { useCommission } from "@/services/commission";
 import { InventoryCatalog, type ServiceActivity } from "@/features/inventory/InventoryCatalog";
 import { PRCatalog, type AgentActivity } from "@/features/pr/PRCatalog";
 import type { Scope } from "./views";
@@ -27,12 +28,13 @@ export function InventoryView({ scope, initialFilter = "all" }: { scope: Scope; 
 /** Referral activity per PR agent for the reporting period (NGN — the network belongs to BR001). */
 export function useAgentActivity(scope: Scope): AgentActivity {
   const { period } = useApp();
+  const { version } = useCommission();
   const range = resolveRange(period);
   return useMemo(() => {
     const map: AgentActivity = new Map();
     for (const a of agentRanking(scope ?? [LEGACY_BRANCH_ID], range)) map.set(a.id, { referrals: a.referrals, revenue: a.revenue.NGN ?? 0, commission: a.commission.NGN ?? 0 });
     return map;
-  }, [scope, range]);
+  }, [scope, range, version]);
 }
 
 /**

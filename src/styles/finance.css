@@ -338,3 +338,28 @@
 .fin .donut {
   align-self: center;
 }
+
+/* Hover: highlight the bar under the pointer, soften the rest. */
+.fin-bar {
+  cursor: default;
+}
+
+.fin-bar > span {
+  transition: opacity 0.15s, filter 0.15s;
+}
+
+.fin-bar.is-dim > span {
+  opacity: 0.4;
+}
+
+.fin-bar.is-hover > span {
+  filter: brightness(1.15);
+}
+
+.fin-bar.is-hover::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 22px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--brand-600) 7%, transparent);
+}

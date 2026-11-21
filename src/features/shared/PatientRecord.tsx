@@ -13,13 +13,14 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { CalendarDays, Clock3, CreditCard, Handshake, MapPin, UserCheck, UserRound, X } from "lucide-react";
+import { CalendarDays, Clock3, CreditCard, Handshake, MapPin, Phone, Printer, UserCheck, UserRound, X } from "lucide-react";
 import { useApp } from "@/app/AppState";
 import { SERVICES, getBranch } from "@/data/company";
 import { patientHistory, type PatientVisit } from "@/data/demo/dailyLines";
 import { useMotionPreset } from "@/shared/motion";
 import { formatCount, formatMoney, formatShortDate, formatTime } from "@/shared/format";
 import { Button } from "@/shared/ui/controls";
+import { ReceiptModal } from "@/features/receipts/ReceiptModal";
 
 const CATEGORY = new Map(SERVICES.map((s) => [s.id, s.category]));
 const fullDate = (d: Date) => d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
@@ -35,6 +36,7 @@ function PatientRecord({ visit, onClose }: { visit: PatientVisit; onClose: () =>
   const history = useMemo(() => patientHistory(visit.branchId, visit.patientRef), [visit.branchId, visit.patientRef]);
   const visits = history.visits.length ? history.visits : [visit];
   const [selectedId, setSelectedId] = useState(visit.id);
+  const [receiptFor, setReceiptFor] = useState<PatientVisit | null>(null);
   const current = visits.find((v) => v.id === selectedId) ?? visit;
   const branch = getBranch(visit.branchId);
   const c = branch?.currency ?? "NGN";
@@ -73,6 +75,10 @@ function PatientRecord({ visit, onClose }: { visit: PatientVisit; onClose: () =>
               <span className="vrd-eyebrow">Patient</span>
               <strong>{visit.patientRef}</strong>
               <em>{status}</em>
+              <span className="vrd-phone">
+                <Phone size={13} aria-hidden="true" />
+                {visit.phone ?? "Phone not provided"}
+              </span>
             </div>
 
             <dl className="vrd-stats">
@@ -149,11 +155,17 @@ function PatientRecord({ visit, onClose }: { visit: PatientVisit; onClose: () =>
 
             <footer className="fd-foot">
               <span className="left">Demonstration visit built from the real catalogue and prices. Patients are anonymous references.</span>
-              <Button onClick={onClose}>Done</Button>
+              <Button variant="secondary" onClick={onClose}>
+                Done
+              </Button>
+              <Button onClick={() => setReceiptFor(current)}>
+                <Printer size={16} /> Print receipt
+              </Button>
             </footer>
           </section>
         </motion.div>
       </motion.div>
+      {receiptFor && <ReceiptModal key={receiptFor.id} visit={receiptFor} onClose={() => setReceiptFor(null)} />}
     </AnimatePresence>,
     document.body,
   );
@@ -174,6 +186,11 @@ function VisitSlip({ visit }: { visit: PatientVisit }) {
           <span className="vr-label">Patient</span>
           <strong>{visit.patientRef}</strong>
           <small>{visit.isNew ? "New patient · first visit" : "Returning patient"}</small>
+          <span className="vr-phone">
+            <Phone size={14} aria-hidden="true" />
+            <span>Phone number</span>
+            {visit.phone ? <b className="num">{visit.phone}</b> : <em className="vr-missing">Not provided</em>}
+          </span>
         </div>
         <span className={`vr-stamp is-${stamp}`}>{visit.payment}</span>
       </section>

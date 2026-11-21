@@ -17,10 +17,11 @@ export type ContributionRule = (summary: Summary, currency: Currency) => number;
 export const OPERATING_CONTRIBUTION_RULE: ContributionRule | null = null;
 
 /**
- * PR AGENT COMMISSION RATE — PLACEHOLDER FOR DEMO ACTIVITY ONLY.
- * The legacy export does not include the commission rate or commission
- * history. This rate is used solely to illustrate commission figures on the
- * demonstration activity and must be replaced with the confirmed rate (or the
- * legacy commission records) before any figure is relied upon.
+ * PR AGENT COMMISSION — STARTING COMPANY RATE (owner: usually 10% or 15%, rarely 20%).
+ * Commission = the full bill of each patient an agent sends (all tests) × the
+ * agent's rate, e.g. ₦100,000 at 10% = ₦10,000.
+ * The legacy export has no commission rate or history. This is only the rate
+ * the app starts with; the admin changes it on the PR page (and per agent on
+ * the agent profile) — see services/commission.ts, which every figure uses.
  */
-export const DEMO_PR_COMMISSION_RATE = 0.05;
+export const DEFAULT_PR_COMMISSION_RATE = 0.1;

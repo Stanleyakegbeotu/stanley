@@ -10,7 +10,6 @@
  */
 import { ACTIVE_BRANCHES, SERVICES, servicePrice } from "../company";
 import { LEGACY_PR_AGENTS, hospitalKey } from "../legacy";
-import { DEMO_PR_COMMISSION_RATE } from "@/services/businessRules";
 import type { AgingBuckets, Branch, Currency, DayRecord } from "../types";
 
 /**
@@ -199,7 +198,6 @@ function generateBranch(branch: Branch, seedIndex: number): DayRecord[] {
       b * scale.admin * (0.5 + rand()) * dayFrac,
     ].map(Math.round);
     const expenses = expensesByCategory.reduce((a, c) => a + c, 0);
-    const prCommission = Math.round(referralRevenue.reduce((a, v) => a + v, 0) * DEMO_PR_COMMISSION_RATE);
 
     const aging: AgingBuckets = { d0_30: 0, d31_60: 0, d61_90: 0, d90p: 0 };
     let outstanding = 0;
@@ -229,7 +227,6 @@ function generateBranch(branch: Branch, seedIndex: number): DayRecord[] {
       paidAtVisit: paidSameDay,
       recovered: collected,
       expenses,
-      prCommission,
       serviceCounts,
       referralAgentIds,
       referralRevenue,

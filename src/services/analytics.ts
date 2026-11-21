@@ -8,7 +8,7 @@
 import { ACTIVE_BRANCHES, BRANCHES, SERVICES, getBranch, servicePrice } from "@/data/company";
 import { DAILY, DATA_START, TODAY, addDays, diffDays, isoDate, parseIso } from "@/data/demo/generator";
 import { LEGACY_HOSPITAL_DIRECTORY, LEGACY_PR_AGENTS, hospitalKey as legacyHospitalKey } from "@/data/legacy";
-import { DEMO_PR_COMMISSION_RATE } from "./businessRules";
+import { dayCommission, rateFor } from "./commission";
 import {
   EXPENSE_CATEGORIES,
   PAYMENT_METHODS,
@@ -157,7 +157,7 @@ export function summarize(branchIds: string[], r: DateRange): Summary {
       add(s.revenue, c, d.revenue);
       add(s.payments, c, d.payments);
       add(s.expenses, c, d.expenses);
-      add(s.prCommission, c, d.prCommission);
+      add(s.prCommission, c, dayCommission(d));
       s.patients += d.patients;
       s.newPatients += d.newPatients;
       s.referrals += d.referrals;
@@ -366,7 +366,7 @@ export function agentRanking(branchIds: string[], r: DateRange): AgentRank[] {
         branch: t.branch,
         referrals: t.referrals,
         revenue: { [c]: t.revenue } as Money,
-        commission: { [c]: t.revenue * DEMO_PR_COMMISSION_RATE } as Money,
+        commission: { [c]: t.revenue * rateFor(t.agentId) } as Money,
       };
     })
     .sort((a, b) => b.referrals - a.referrals || a.name.localeCompare(b.name));

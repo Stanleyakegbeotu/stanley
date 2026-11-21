@@ -1,0 +1,1876 @@
+/*
+ * Reports page cards and the report builder pop-up (src/features/reports).
+ * The builder mirrors the app shell: a theme-coloured side panel (--sb-*)
+ * curving into a white island. One theme colour; red only for warnings.
+ * Printable pages are styled separately by reports/reportCss.ts.
+ */
+
+/* ─────────────── Compact report cards ─────────────── */
+.rp-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+
+@media (max-width: 1200px) {
+  .rp-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .rp-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+.rp-card {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  border-radius: 20px;
+  transition: box-shadow 0.25s var(--ease), border-color 0.2s;
+}
+
+.rp-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--brand-600);
+}
+
+.rp-card:hover {
+  border-color: color-mix(in srgb, var(--brand-600) 30%, var(--line));
+  box-shadow: 0 14px 30px color-mix(in srgb, var(--brand-700) 12%, transparent), var(--shadow-1);
+}
+
+.rp-card-top {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 20px 14px 22px;
+  background: var(--band-glow, none), var(--band-wash, var(--surface));
+}
+
+.rp-card-icon {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 13px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: linear-gradient(140deg, var(--brand-500), var(--brand-700));
+  box-shadow: 0 6px 14px color-mix(in srgb, var(--brand-600) 28%, transparent);
+}
+
+.rp-card-name {
+  min-width: 0;
+}
+
+.rp-card-name h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.rp-card-name p {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.rp-card-more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 20px 0 22px;
+  padding: 10px 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand-700);
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.rp-card-more svg {
+  transition: transform 0.2s var(--ease);
+}
+
+.rp-card.is-open .rp-card-more svg {
+  transform: rotate(180deg);
+}
+
+.rp-card-list {
+  overflow: hidden;
+  list-style: none;
+  margin: 0 20px 0 22px;
+  padding: 0;
+}
+
+.rp-card-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-bottom: 9px;
+  padding-left: 11px;
+  border-left: 2px solid color-mix(in srgb, var(--brand-600) 35%, var(--line));
+}
+
+.rp-card-list b {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.rp-card-list span {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.rp-card-go {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 4px 20px 18px 22px;
+  height: 42px;
+  border-radius: 12px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 650;
+  color: #fff;
+  background: linear-gradient(140deg, var(--brand-600), var(--brand-700));
+  border: 0;
+  cursor: pointer;
+  box-shadow: 0 6px 14px color-mix(in srgb, var(--brand-600) 25%, transparent);
+  transition: filter 0.15s;
+}
+
+.rp-card-go:hover {
+  filter: brightness(1.08);
+}
+
+/* ─────────────── Builder: shell-style frame ─────────────── */
+.rb {
+  --rb-panel: 430px;
+  position: relative;
+  width: min(1520px, 100%);
+  height: min(960px, calc(100vh - 28px));
+  display: grid;
+  grid-template-columns: var(--rb-panel) minmax(0, 1fr);
+  border-radius: 28px;
+  background: linear-gradient(180deg, var(--sb-1) 0%, var(--sb-2) 100%);
+  box-shadow: var(--shadow-pop);
+  overflow: hidden;
+  transition: grid-template-columns 0.3s var(--ease);
+}
+
+.rb.is-dragging {
+  transition: none;
+  cursor: col-resize;
+  user-select: none;
+}
+
+/* Theme side panel */
+.rb-panel {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  color: var(--sb-ink);
+}
+
+.rb-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 16px 16px 20px;
+}
+
+.rb.is-folded .rb-panel-head {
+  flex-direction: column;
+  padding: 18px 0 12px;
+}
+
+.rb-icon {
+  flex: none;
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  display: grid;
+  place-items: center;
+  color: var(--sb-1);
+  background: var(--sb-accent);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+}
+
+.rb-panel-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.rb.is-folded .rb-panel-title {
+  display: none;
+}
+
+.rb-panel-title span {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--sb-muted);
+}
+
+.rb-panel-title strong {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--sb-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rb-fold {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  color: var(--sb-ink);
+  background: var(--sb-faint);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.rb-fold:hover {
+  background: var(--sb-active);
+}
+
+.rb-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 16px 20px 18px;
+  scrollbar-width: thin;
+}
+
+/* Guide */
+.rb-guide {
+  margin-bottom: 14px;
+  border-radius: 16px;
+  background: var(--sb-faint);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.rb-guide-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 13px;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--sb-ink);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.rb-guide-toggle svg:first-child {
+  color: var(--sb-accent);
+}
+
+.rb-guide .rb-chev {
+  margin-left: auto;
+  transition: transform 0.2s;
+}
+
+.rb-guide.is-open .rb-chev {
+  transform: rotate(180deg);
+}
+
+.rb-guide-body {
+  padding: 0 13px 12px;
+}
+
+.rb-guide-body p {
+  display: flex;
+  gap: 7px;
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--sb-muted);
+}
+
+.rb-guide-body p:last-child {
+  margin-bottom: 0;
+}
+
+.rb-guide-body svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--sb-accent);
+}
+
+/* Step list */
+.rb-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rb-steps > li > button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  font: inherit;
+  text-align: left;
+  color: var(--sb-ink);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.rb-steps > li > button:hover:not(:disabled) {
+  background: var(--sb-hover);
+}
+
+.rb-steps > li > button:disabled {
+  cursor: not-allowed;
+}
+
+.rb-steps > li > button > i {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--sb-ink);
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+}
+
+.rb-steps > li > button > span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.rb-steps > li > button small {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--sb-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rb-steps > li.is-done > button > i {
+  color: var(--sb-1);
+  background: var(--sb-accent);
+  border-color: var(--sb-accent);
+}
+
+.rb-steps li.is-current > button {
+  background: var(--sb-active);
+}
+
+.rb-steps > li.is-current > button > i {
+  color: var(--sb-1);
+  background: #fff;
+  border-color: #fff;
+}
+
+.rb-steps li.is-locked > button {
+  opacity: 0.45;
+}
+
+/* Current step card (white, readable) */
+.rb-card {
+  margin: 8px 0 10px;
+  padding: 16px;
+  border-radius: 18px;
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.16);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.rb-card-help {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.rb-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--brand-600) 60%, var(--muted));
+}
+
+.rb-label em {
+  margin-left: auto;
+  font-style: normal;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--muted);
+}
+
+.rb-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.rb-field > small {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.rb-select {
+  width: 100%;
+  justify-content: space-between;
+}
+
+.rb-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.rb-note svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--brand-600);
+}
+
+.rb-note b {
+  color: var(--ink);
+}
+
+/* Radio-style choices */
+.rb-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rb-choice,
+.rb-toggle {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 11px 12px;
+  border-radius: 12px;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.rb-choice:hover:not(:disabled),
+.rb-toggle:hover {
+  border-color: color-mix(in srgb, var(--brand-600) 40%, var(--line));
+}
+
+.rb-choice:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.rb-choice > i {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  border: 2px solid var(--line-2);
+}
+
+.rb-choice.is-on {
+  border-color: var(--brand-600);
+  background: color-mix(in srgb, var(--brand-600) 7%, var(--surface));
+}
+
+.rb-choice.is-on > i {
+  background: var(--brand-600);
+  border-color: var(--brand-600);
+}
+
+.rb-choice span,
+.rb-toggle span {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.rb-choice b,
+.rb-toggle b {
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.rb-choice small,
+.rb-toggle small {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+/* Switch-style extras */
+.rb-toggle > i {
+  flex: none;
+  position: relative;
+  width: 34px;
+  height: 20px;
+  margin-top: 1px;
+  border-radius: 999px;
+  background: var(--line-2);
+  transition: background 0.2s;
+}
+
+.rb-toggle > i::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 0.2s var(--ease);
+}
+
+.rb-toggle.is-on {
+  border-color: color-mix(in srgb, var(--brand-600) 45%, var(--line));
+  background: color-mix(in srgb, var(--brand-600) 6%, var(--surface));
+}
+
+.rb-toggle.is-on > i {
+  background: var(--brand-600);
+}
+
+.rb-toggle.is-on > i::after {
+  transform: translateX(14px);
+}
+
+/* Chips (periods, paper size) */
+.rb-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.rb-chips button {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.rb-chips button:hover {
+  border-color: color-mix(in srgb, var(--brand-600) 40%, var(--line));
+}
+
+.rb-chips button.is-on {
+  color: #fff;
+  background: var(--brand-600);
+  border-color: var(--brand-600);
+}
+
+.rb-dates {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.rb-dates label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.rb-date {
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  border-radius: 11px;
+  border: 1px solid var(--line-2);
+  background: var(--surface);
+  color: var(--brand-600);
+}
+
+.rb-date:focus-within {
+  border-color: var(--brand-600);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-600) 18%, transparent);
+}
+
+.rb-date input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--ink);
+  border: 0;
+  outline: 0;
+  background: transparent;
+  accent-color: var(--brand-600);
+  color-scheme: light;
+}
+
+/* Column checkboxes */
+.rb-cols {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.rb-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 11px 0 9px;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.rb-check > i {
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  border: 1.5px solid var(--line-2);
+}
+
+.rb-check.is-on {
+  border-color: color-mix(in srgb, var(--brand-600) 45%, var(--line));
+  background: color-mix(in srgb, var(--brand-600) 7%, var(--surface));
+}
+
+.rb-check.is-on > i {
+  background: var(--brand-600);
+  border-color: var(--brand-600);
+}
+
+.rb-check:disabled {
+  cursor: default;
+  opacity: 0.8;
+}
+
+/* Orientation tiles */
+.rb-orient {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.rb-orient button {
+  height: 92px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.rb-orient button.is-on {
+  color: var(--brand-800);
+  border-color: var(--brand-600);
+  background: color-mix(in srgb, var(--brand-600) 7%, var(--surface));
+}
+
+.rb-sheet-icon {
+  display: block;
+  border-radius: 3px;
+  border: 2px solid currentColor;
+  background: linear-gradient(currentColor, currentColor) 6px 8px / 50% 2px no-repeat, linear-gradient(currentColor, currentColor) 6px 14px / 65% 2px no-repeat;
+  opacity: 0.7;
+}
+
+.rb-sheet-icon.is-portrait {
+  width: 30px;
+  height: 40px;
+}
+
+.rb-sheet-icon.is-landscape {
+  width: 42px;
+  height: 30px;
+}
+
+/* Back / Next */
+.rb-nav {
+  display: flex;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.rb-back,
+.rb-next {
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.rb-back {
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.rb-next {
+  margin-left: auto;
+  color: #fff;
+  background: linear-gradient(140deg, var(--brand-600), var(--brand-700));
+  border: 0;
+}
+
+/* Review */
+.rb-review {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.rb-review > div {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.rb-review > div:last-child {
+  border-bottom: 0;
+}
+
+.rb-review dt {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.rb-review dd {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.rb-remind {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--brand-600) 4%, var(--surface));
+}
+
+.rb-remind.is-warn {
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--line));
+  background: color-mix(in srgb, var(--warn) 8%, var(--surface));
+}
+
+.rb-remind.is-ok {
+  border-color: color-mix(in srgb, var(--brand-600) 35%, var(--line));
+}
+
+.rb-remind-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.rb-remind.is-warn .rb-remind-title svg {
+  color: var(--warn);
+}
+
+.rb-remind.is-ok .rb-remind-title svg {
+  color: var(--brand-600);
+}
+
+.rb-remind ul {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rb-remind li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+
+.rb-remind li span {
+  display: flex;
+  flex-direction: column;
+}
+
+.rb-remind li em {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--warn) 80%, var(--ink));
+}
+
+.rb-remind li button {
+  flex: none;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--brand-700);
+  background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--brand-600) 35%, var(--line));
+  cursor: pointer;
+}
+
+.rb-remind-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rb-remind-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.rb-remind-list li svg {
+  color: var(--warn);
+}
+
+.rb-remind-list li .text-link {
+  margin-left: auto;
+}
+
+/* Folded rail */
+.rb-rail {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.rb-rail button {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--sb-ink);
+  background: none;
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+}
+
+.rb-rail button.is-done {
+  color: var(--sb-1);
+  background: var(--sb-accent);
+  border-color: var(--sb-accent);
+}
+
+.rb-rail button.is-current {
+  color: var(--sb-1);
+  background: #fff;
+  border-color: #fff;
+}
+
+.rb-rail button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Resize edge (VS Code-style sash) */
+.rb-sash {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  bottom: 0;
+  width: 10px;
+  z-index: 3;
+  cursor: col-resize;
+}
+
+.rb-sash::after {
+  content: "";
+  position: absolute;
+  top: 18%;
+  bottom: 18%;
+  left: 4px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--sb-accent);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.rb-sash:hover::after,
+.rb.is-dragging .rb-sash::after {
+  opacity: 0.9;
+}
+
+.rb.is-folded .rb-sash {
+  cursor: pointer;
+}
+
+/* ─────────────── Builder: white preview island ─────────────── */
+.rb-island {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin: 12px 12px 12px 0;
+  border-radius: 22px;
+  background: var(--canvas);
+  overflow: hidden;
+  box-shadow: -10px 0 30px rgba(0, 0, 0, 0.12);
+}
+
+.rb-island-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  padding: 14px 16px 12px 22px;
+  border-bottom: 1px solid var(--band-line, var(--line));
+  background: var(--band-glow, none), var(--band-wash, var(--surface));
+}
+
+.rb-island-title {
+  display: flex;
+  flex-direction: column;
+  margin-right: auto;
+}
+
+.rb-island-title span {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--brand-700);
+}
+
+.rb-island-title strong {
+  font-size: 14.5px;
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.rb-busy,
+.rb-warn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.rb-busy {
+  color: var(--brand-700);
+}
+
+.rb-warn {
+  color: var(--danger);
+}
+
+.rb-zoom {
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.rb-pages {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 22px 28px 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+  background: color-mix(in srgb, var(--brand-600) 4%, var(--canvas));
+  transition: opacity 0.2s;
+}
+
+.rb-pages.is-stale {
+  opacity: 0.55;
+}
+
+.rb-sheet {
+  flex: none;
+  overflow: hidden;
+  border-radius: 3px;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.08),
+    0 10px 30px rgba(15, 40, 40, 0.14);
+  background: #fff;
+}
+
+.rb-more {
+  padding: 10px 16px;
+  border-radius: 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand-700);
+  background: var(--surface);
+  border: 1px dashed color-mix(in srgb, var(--brand-600) 45%, var(--line));
+  cursor: pointer;
+}
+
+.rb-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px 12px 22px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.rb-foot-note {
+  margin-right: auto;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.rb-action {
+  height: 50px;
+  padding: 0 18px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font: inherit;
+  text-align: left;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-1);
+  cursor: pointer;
+  transition: border-color 0.15s, opacity 0.15s;
+}
+
+.rb-action span {
+  display: flex;
+  flex-direction: column;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.rb-action small {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.rb-action svg {
+  color: var(--brand-600);
+}
+
+.rb-action:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--brand-600) 45%, var(--line));
+}
+
+.rb-action.is-primary {
+  color: #fff;
+  background: linear-gradient(140deg, var(--brand-600), var(--brand-700));
+  border-color: var(--brand-700);
+}
+
+.rb-action.is-primary small,
+.rb-action.is-primary svg {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.rb-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.spin {
+  animation: rb-spin 0.9s linear infinite;
+}
+
+@keyframes rb-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 1000px) {
+  .rb {
+    --rb-panel: 300px !important;
+  }
+  .rb-foot-note {
+    display: none;
+  }
+}
+
+/* Keep output buttons on one line; the note gives way instead. */
+.rb-action {
+  flex: none;
+  white-space: nowrap;
+}
+
+.rb-foot-note {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.4;
+}
+
+/* ═══════════════ Builder v3: two plain sections, three steps ═══════════════
+   Only the sidebar is theme-coloured; the preview sits beside it (no frame
+   around it). Overrides the shell-frame rules above. */
+.rb {
+  background: var(--canvas);
+}
+
+.rb-panel {
+  background: linear-gradient(180deg, var(--sb-1) 0%, var(--sb-2) 100%);
+}
+
+.rb-island {
+  margin: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* Progress: three steps across the top of the panel */
+.rb-progress {
+  list-style: none;
+  margin: 0 18px 14px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.rb-progress li {
+  position: relative;
+  min-width: 0;
+}
+
+.rb-progress li + li::before {
+  content: "";
+  position: absolute;
+  top: 17px;
+  right: calc(50% + 20px);
+  width: calc(100% - 34px);
+  height: 2px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.rb-progress li.is-done + li::before,
+.rb-progress li.is-done + li.is-current::before {
+  background: var(--sb-accent);
+}
+
+.rb-progress button {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  font: inherit;
+  color: var(--sb-ink);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.rb-progress button:disabled {
+  cursor: not-allowed;
+}
+
+.rb-progress i {
+  position: relative;
+  z-index: 1;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-style: normal;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--sb-ink);
+  background: var(--sb-2);
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+
+.rb-progress span {
+  font-size: 12.5px;
+  font-weight: 650;
+  text-align: center;
+  line-height: 1.25;
+}
+
+.rb-progress li.is-done i {
+  color: var(--sb-1);
+  background: var(--sb-accent);
+  border-color: var(--sb-accent);
+}
+
+.rb-progress li.is-current i {
+  color: var(--sb-1);
+  background: #fff;
+  border-color: #fff;
+  box-shadow: 0 0 0 5px rgba(255, 255, 255, 0.16);
+}
+
+.rb-progress li.is-locked button {
+  opacity: 0.5;
+}
+
+/* Guide — full-contrast, easy to read */
+.rb-guide {
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.rb-guide-toggle {
+  font-size: 14.5px;
+  padding: 13px 14px;
+}
+
+.rb-guide-body {
+  padding: 0 16px 16px;
+}
+
+.rb-guide-body p,
+.rb-guide-body li span {
+  color: var(--sb-ink);
+}
+
+.rb-guide-lead {
+  font-size: 13.5px !important;
+  line-height: 1.6 !important;
+  font-weight: 500;
+}
+
+.rb-guide-body ol {
+  list-style: none;
+  counter-reset: g;
+  margin: 12px 0;
+  padding: 12px 0 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rb-guide-body li {
+  counter-increment: g;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 32px;
+}
+
+.rb-guide-body li::before {
+  content: counter(g);
+  position: absolute;
+  left: 0;
+  top: 1px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--sb-1);
+  background: var(--sb-accent);
+}
+
+.rb-guide-body li b {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.rb-guide-body li span {
+  font-size: 13px;
+  line-height: 1.5;
+  opacity: 0.92;
+}
+
+.rb-guide-tip {
+  margin: 0 !important;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 12.5px !important;
+  line-height: 1.5;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Step card: one card, clear sections */
+.rb-card {
+  margin: 0;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+.rb-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--band-line, var(--line));
+  background: var(--band-glow, none), var(--band-wash, var(--surface));
+}
+
+.rb-card-icon {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: linear-gradient(140deg, var(--brand-500), var(--brand-700));
+}
+
+.rb-card-step {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--brand-700);
+}
+
+.rb-card-head h3 {
+  margin: 1px 0 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.rb-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px 18px;
+}
+
+.rb-sec + .rb-sec {
+  border-top: 1px solid var(--line);
+}
+
+.rb-sec h4 {
+  margin: 0;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.rb-sec-help {
+  margin: -6px 0 2px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* Back / Next pinned to the bottom of the panel */
+.rb-panel-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 18px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.rb-panel-nav .rb-back {
+  color: var(--sb-ink);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.rb-panel-nav .rb-next {
+  margin-left: 0;
+  color: var(--sb-1);
+  background: #fff;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+}
+
+.rb-ready {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--sb-ink);
+}
+
+.rb-ready svg {
+  color: var(--sb-accent);
+}
+
+.rb-panel-body {
+  padding-top: 2px;
+}
+
+/* Month picker (monthly reports, e.g. commission payout) */
+.rb-months {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.rb-months button {
+  height: 38px;
+  padding: 0 10px;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.rb-months button:hover {
+  border-color: color-mix(in srgb, var(--brand-600) 40%, var(--line));
+}
+
+.rb-months button.is-on {
+  color: #fff;
+  background: var(--brand-600);
+  border-color: var(--brand-600);
+}
+
+/* ═══════════════ Patient receipt pop-up (features/receipts) ═══════════════ */
+.rcm {
+  position: relative;
+  width: min(1180px, 100%);
+  height: min(920px, calc(100vh - 28px));
+  display: grid;
+  grid-template-columns: 380px minmax(0, 1fr);
+  border-radius: 28px;
+  background: var(--canvas);
+  box-shadow: var(--shadow-pop);
+  overflow: hidden;
+}
+
+.rcm-side {
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px 18px 22px;
+  color: var(--sb-ink);
+  background: linear-gradient(180deg, var(--sb-1) 0%, var(--sb-2) 100%);
+}
+
+.rcm-side-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 2px 4px;
+}
+
+.rcm-side-head > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.rcm-side-head span {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--sb-muted);
+}
+
+.rcm-side-head strong {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 18px;
+  font-weight: 500;
+  color: #fff;
+}
+
+.rcm-side-head small {
+  font-size: 12.5px;
+  color: var(--sb-ink);
+  opacity: 0.85;
+}
+
+.rcm-icon {
+  flex: none;
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  display: grid;
+  place-items: center;
+  color: var(--sb-1);
+  background: var(--sb-accent);
+}
+
+.rcm-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 18px;
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.16);
+}
+
+.rcm-card h3 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.rcm-card h3 i {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-style: normal;
+  font-size: 12px;
+  color: #fff;
+  background: linear-gradient(140deg, var(--brand-500), var(--brand-700));
+}
+
+.rcm-help {
+  margin: -2px 0 2px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.rcm-papers {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rcm-papers button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.rcm-papers button.is-on {
+  border-color: var(--brand-600);
+  background: color-mix(in srgb, var(--brand-600) 7%, var(--surface));
+}
+
+.rcm-papers span:last-child {
+  display: flex;
+  flex-direction: column;
+}
+
+.rcm-papers b {
+  font-size: 13.5px;
+  color: var(--ink);
+}
+
+.rcm-papers small {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.rcm-roll {
+  flex: none;
+  height: 34px;
+  border-radius: 3px;
+  border: 2px solid var(--brand-600);
+  background: repeating-linear-gradient(180deg, transparent 0 6px, color-mix(in srgb, var(--brand-600) 30%, transparent) 6px 8px);
+}
+
+.rcm-roll.is-58 {
+  width: 16px;
+}
+
+.rcm-roll.is-80 {
+  width: 22px;
+}
+
+.rcm-roll.is-a5 {
+  width: 26px;
+  background: linear-gradient(currentColor, currentColor) 4px 8px / 60% 2px no-repeat, linear-gradient(currentColor, currentColor) 4px 14px / 45% 2px no-repeat;
+  color: color-mix(in srgb, var(--brand-600) 55%, transparent);
+}
+
+.rcm-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--brand-600) 60%, var(--muted));
+}
+
+.rcm-field input,
+.rcm-field textarea {
+  width: 100%;
+  padding: 9px 11px;
+  border-radius: 10px;
+  border: 1px solid var(--line-2);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink);
+  background: var(--surface);
+  resize: vertical;
+}
+
+.rcm-field input:focus,
+.rcm-field textarea:focus {
+  outline: none;
+  border-color: var(--brand-600);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-600) 18%, transparent);
+}
+
+.rcm-main {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.rcm-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 16px 12px 22px;
+  border-bottom: 1px solid var(--band-line, var(--line));
+  background: var(--band-glow, none), var(--band-wash, var(--surface));
+}
+
+.rcm-head > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.rcm-head span {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--brand-700);
+}
+
+.rcm-head strong {
+  font-size: 14.5px;
+  font-weight: 650;
+  color: var(--ink);
+}
+
+/* Scrollable stage: the receipt at actual size on a soft "printer" surface */
+.rcm-stage {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 28px 24px 34px;
+  background: radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--brand-600) 8%, var(--canvas)) 0%, color-mix(in srgb, var(--ink) 6%, var(--canvas)) 100%);
+}
+
+.rcm-paper {
+  flex: none;
+  background: #fff;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.1),
+    0 16px 34px rgba(15, 40, 40, 0.18);
+}
+
+/* Torn-paper edge for till rolls */
+.rcm-paper.is-58,
+.rcm-paper.is-80 {
+  -webkit-mask: linear-gradient(#000 0 0) top / 100% calc(100% - 6px) no-repeat, conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom / 12px 6px repeat-x;
+  mask: linear-gradient(#000 0 0) top / 100% calc(100% - 6px) no-repeat, conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom / 12px 6px repeat-x;
+  padding-bottom: 6px;
+}
+
+.rcm-stage-note {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.rcm-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px 12px 22px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.rcm-foot-note {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}

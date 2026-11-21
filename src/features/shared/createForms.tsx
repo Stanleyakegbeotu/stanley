@@ -16,7 +16,7 @@ import { EXPENSE_CATEGORIES } from "@/data/types";
 import { isoDate } from "@/data/demo/generator";
 import { LEGACY_BRANCH_ID, hospitalKey } from "@/data/legacy";
 import { CATALOGUE_CATEGORIES } from "@/data/catalogueRules";
-import { nextServiceId, nextUserId } from "@/data/userRecords";
+import { MANAGER_ROLE, STAFF_ROLES, managerOf, nextServiceId, nextUserId } from "@/data/userRecords";
 import { formatMoney } from "@/shared/format";
 import { Button, SelectMenu } from "@/shared/ui/controls";
 import { FormDialog, FormField, FormSection, PreviewCard } from "@/shared/ui/FormDialog";
@@ -383,22 +383,15 @@ export function AddAgentDialog({ open, onClose, hospitals, initialHospital = "" 
 
 /* ─────────────── Staff ─────────────── */
 
-const ROLES = [
-  { value: "Branch Manager", access: "Branch billing, staff, expenses and settings" },
-  { value: "Front Desk", access: "Patient registration and billing" },
-  { value: "Laboratory Scientist", access: "Lab orders and results" },
-  { value: "Radiographer", access: "Imaging orders and reports" },
-  { value: "Sonographer", access: "Ultrasound orders and reports" },
-  { value: "Accountant", access: "Payments, expenses and reports" },
-];
+const ROLES = STAFF_ROLES;
 
-export function AddStaffDialog({ open, onClose, branchId }: { open: boolean; onClose: () => void; branchId?: string | null }) {
-  const { showToast } = useApp();
+export function AddStaffDialog({ open, onClose, branchId, presetRole, onCreated }: { open: boolean; onClose: () => void; branchId?: string | null; presetRole?: string; onCreated?: (id: string) => void }) {
+  const { showToast, addStaff, staff } = useApp();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [branch, setBranch] = useState(branchId ?? ACTIVE_BRANCHES[0]?.id ?? "");
-  const [role, setRole] = useState("");
+  const [role, setRole] = useState(presetRole ?? "");
   const [employment, setEmployment] = useState("Full-time");
   const [start, setStart] = useState("");
   const close = () => {
@@ -417,6 +410,9 @@ export function AddStaffDialog({ open, onClose, branchId }: { open: boolean; onC
   ];
   const r = ROLES.find((x) => x.value === role);
   const b = getBranch(branch);
+  // One manager per branch: the Branch Manager role is closed while the branch has one.
+  const currentManager = managerOf(staff, branch);
+  const emailOk = !email.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
   return (
     <FormDialog
@@ -441,9 +437,11 @@ export function AddStaffDialog({ open, onClose, branchId }: { open: boolean; onC
         <Footer
           onCancel={close}
           submitLabel="Add staff member"
-          canSubmit={steps.every((s) => s.done)}
+          canSubmit={steps.every((s) => s.done) && emailOk && !(role === MANAGER_ROLE && currentManager)}
           onSubmit={() => {
-            showToast(`${name.trim()} prepared as ${role} at ${b?.name} (demo — staff accounts need the database and sign-in)`);
+            const created = addStaff({ name, role, branchId: branch, status: "Active", email, phone, employment, startDate: start });
+            showToast(`${created.name} added as ${role} at ${b?.name} branch`);
+            onCreated?.(created.id);
             close();
           }}
         />
@@ -469,9 +467,9 @@ export function AddStaffDialog({ open, onClose, branchId }: { open: boolean; onC
         <FormField label="Role" required full as="div">
           <div className="fd-tiles" role="group" aria-label="Role">
             {ROLES.map((x) => (
-              <button key={x.value} type="button" className="fd-tile" aria-pressed={role === x.value} onClick={() => setRole(x.value)}>
+              <button key={x.value} type="button" className="fd-tile" aria-pressed={role === x.value} disabled={x.value === MANAGER_ROLE && !!currentManager} onClick={() => setRole(x.value)}>
                 <strong>{x.value}</strong>
-                <small>{x.access}</small>
+                <small>{x.value === MANAGER_ROLE && currentManager ? `${b?.name} already has a manager (${currentManager.name})` : x.access}</small>
               </button>
             ))}
           </div>

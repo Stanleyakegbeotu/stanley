@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowLeft, ArrowRight, Bell, Building2, Check, ChevronRight, Download, FileText, Hospital, Lock, MapPin, Palette, Plus, Stethoscope, Upload, FlaskConical, ChartLine, Wallet, Users, UserRound } from "lucide-react";
-import { useApp } from "@/app/AppState";
+import { TRASH_RETENTION_DAYS, useApp } from "@/app/AppState";
 import { THEMES } from "@/app/themes";
 import { ACTIVE_BRANCHES, BRANCHES, COMPANY, NOT_ON_RECORD, SERVICES, getBranch, servicePrice } from "@/data/company";
 import { HEADCOUNT } from "@/data/demo/records";
@@ -21,6 +21,10 @@ import { PageHero } from "@/features/shared/PageHero";
 import { AddAgentDialog, AddBranchDialog, AddServiceDialog, AddStaffDialog } from "@/features/shared/createForms";
 import { PatientDirectory } from "@/features/patients/PatientDirectory";
 import { FinanceWorkspace, type LogType } from "@/features/finance/FinanceWorkspace";
+import { ReportsHome } from "@/features/reports/ReportsHome";
+import { StaffBranchView } from "@/features/staff/StaffWorkspace";
+import { AuditLogView, TrashLogView } from "@/features/admin/AdminLogs";
+import { managerOf } from "@/data/userRecords";
 import { financeTotals } from "@/services/finance";
 import { patientVisits, patientsOnRecord } from "@/data/demo/dailyLines";
 import { attentionItems } from "@/services/insights";
@@ -241,32 +245,111 @@ export function InventoryPage() {
 }
 
 /* ─────────────── Staff ─────────────── */
+/*
+ * Staff Management: pick a branch (unless the dashboard is already one
+ * branch), then see its manager — head of every staff member — and its staff.
+ * Cards open the staff profile pop-up.
+ */
 export function StaffPage() {
-  const { route } = useApp();
-  const { scope, scopeLabel } = useScope();
-  const [selected, setSelected] = useState<string | null>(route.query.get("branch") ?? (scope?.[0] ?? null));
-  const [adding, setAdding] = useState(false);
+  const { route, navigate } = useApp();
+  const { scope } = useScope();
+  const branchId = scope?.[0] ?? route.query.get("branch");
+  const branch = branchId ? getBranch(branchId) : undefined;
+  const [adding, setAdding] = useState<{ role?: string; session: number } | null>(null);
   return (
     <AnimatedPage>
-      <AddStaffDialog key={selected ?? "none"} open={adding} onClose={() => setAdding(false)} branchId={selected} />
-      <PageHeader
-        eyebrow={`Company-wide access · ${scopeLabel}`}
+      <PageHero
+        eyebrow={`Staff management · ${branch ? `${branch.name} branch` : "All branches"}`}
         title="Staff Management"
-        description="Branch-first staff management: select a branch to manage its manager, accounts, roles and permissions."
+        period={false}
         actions={
-          selected ? (
-            <Button onClick={() => setAdding(true)}>
-              <Plus size={16} /> Add staff
-            </Button>
-          ) : (
-            <Button variant="secondary">
-              <Download size={16} /> Export summary
-            </Button>
+          branch && (
+            <button type="button" className="ph-btn solid" onClick={() => setAdding((a) => ({ session: (a?.session ?? 0) + 1 }))}>
+              <Plus size={18} /> Add staff
+            </button>
           )
         }
       />
-      <StaffBranchPicker scope={scope} selected={selected} onSelect={setSelected} />
+      {!branch ? (
+        <StaffBranchCards onPick={(id) => navigate(`/staff?branch=${id}`)} />
+      ) : (
+        <>
+          {!scope && (
+            <nav className="inv-back" aria-label="Breadcrumb" style={{ marginBottom: 18 }}>
+              <button type="button" className="inv-back-btn" onClick={() => navigate("/staff")}>
+                <span className="inv-back-icon" aria-hidden="true">
+                  <ArrowLeft size={17} />
+                </span>
+                All branches
+              </button>
+              <span className="inv-crumb">
+                Staff Management <ChevronRight size={14} /> <b>{branch.name} branch</b> · {branch.code}
+              </span>
+            </nav>
+          )}
+          <StaffBranchView branchId={branch.id} onAdd={(role) => setAdding((a) => ({ role, session: (a?.session ?? 0) + 1 }))} />
+        </>
+      )}
+      {adding && branch && <AddStaffDialog key={adding.session} open onClose={() => setAdding(null)} branchId={branch.id} presetRole={adding.role} />}
     </AnimatedPage>
+  );
+}
+
+function StaffBranchCards({ onPick }: { onPick: (branchId: string) => void }) {
+  const { staff } = useApp();
+  const m = useMotionPreset();
+  return (
+    <section className="inv-section">
+      <header className="inv-section-head">
+        <h3>Choose a branch</h3>
+        <span>Each branch has one manager who heads its staff</span>
+      </header>
+      <Reveal mode="stagger" className="prb-grid">
+        {BRANCHES.map((b) => {
+          const active = b.status === "Active";
+          const people = staff.filter((s) => s.branchId === b.id && s.status !== "Left");
+          const manager = managerOf(staff, b.id);
+          return (
+            <motion.button key={b.id} type="button" className="prb-card" variants={m.revealItem} whileHover={m.cardHover} disabled={!active} onClick={() => onPick(b.id)} aria-label={`${b.name} branch — view manager and staff`}>
+              <div className="prb-head">
+                <span className="prb-icon" aria-hidden="true">
+                  <Building2 size={24} />
+                </span>
+                <div className="prb-title">
+                  <h3>{b.name}</h3>
+                  <p>
+                    <MapPin size={14} /> {b.code} · {b.city}, {b.country}
+                  </p>
+                </div>
+                <span className={`bcard-status ${active ? "" : "is-off"}`}>
+                  <i /> {b.status}
+                </span>
+              </div>
+              <dl className="prb-stats">
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <dt>Branch manager</dt>
+                  <dd>{manager ? manager.name : "Not assigned yet"}</dd>
+                </div>
+                <div>
+                  <dt>Staff</dt>
+                  <dd className="num">{formatCount(people.length)}</dd>
+                </div>
+                <div>
+                  <dt>Active</dt>
+                  <dd className="num">{formatCount(people.filter((s) => s.status === "Active").length)}</dd>
+                </div>
+              </dl>
+              <div className="prb-foot">
+                <span>{people.length ? `${formatCount(people.filter((s) => s.status === "On leave").length)} on leave` : "No staff added yet"}</span>
+                <span className="inv-card-go">
+                  View manager & staff <ArrowRight size={15} />
+                </span>
+              </div>
+            </motion.button>
+          );
+        })}
+      </Reveal>
+    </section>
   );
 }
 
@@ -732,42 +815,16 @@ export function ReportsView({ ids, basePath }: { ids: string[]; basePath: string
   );
 }
 
+/*
+ * Reports: one card per report; each opens the report builder pop-up
+ * (choose → preview → print / download PDF / export spreadsheet).
+ */
 export function ReportsPage() {
-  const { period } = useApp();
   const { scope, scopeLabel } = useScope();
-  const ids = useMemo(() => scope ?? resolveBranchIds("all"), [scope?.join()]); // eslint-disable-line react-hooks/exhaustive-deps
-  const m = useMotionPreset();
-  const { navigate } = useApp();
-  const cards = [
-    { title: "Revenue reports", text: "Billed value and trends", icon: ChartLine, to: "/reports?tab=overview" },
-    { title: "PR agents", text: "Referring doctors ranked by referrals", icon: Stethoscope, to: "/reports?tab=doctors" },
-    { title: "Referring hospitals", text: "Organisations and referral sources", icon: Hospital, to: "/reports?tab=hospitals" },
-    { title: "Diagnostic services", text: "Volumes and billed value", icon: FlaskConical, to: "/reports?tab=services" },
-    { title: "Payments & balances", text: "Collections and outstanding", icon: Wallet, to: "/finance?tab=outstanding" },
-    { title: "Staff activity", text: "Headcount and activity", icon: Users, to: "/staff" },
-  ];
   return (
     <AnimatedPage>
-      <PageHeader eyebrow={`Business intelligence · ${scopeLabel}`} title="Reports" description={`Reporting period: ${periodLabel(period)}. Change it from the dashboard banner.`} actions={<DemoChip />} />
-      <Reveal mode="stagger" className="report-grid">
-        {cards.map((c) => {
-          const Icon = c.icon;
-          return (
-            <motion.button key={c.title} className="card report-card" variants={m.revealItem} whileHover={m.cardHover} onClick={() => navigate(c.to)}>
-              <span className="activity-icon">
-                <Icon size={19} />
-              </span>
-              <span>
-                <strong>{c.title}</strong>
-                <small>{c.text}</small>
-              </span>
-              <ChevronRight size={17} />
-            </motion.button>
-          );
-        })}
-      </Reveal>
-      <div style={{ height: 24 }} />
-      <ReportsView ids={ids} basePath="/reports" />
+      <PageHero eyebrow={`Reports & exports · ${scopeLabel}`} title="Reports" period={false} />
+      <ReportsHome initialBranch={scope?.[0]} />
     </AnimatedPage>
   );
 }
@@ -989,8 +1046,8 @@ export function AuditPage() {
   const { scope, scopeLabel } = useScope();
   return (
     <AnimatedPage>
-      <PageHeader eyebrow={`Read-only record · ${scopeLabel}`} title="Audit Log" description="Every administrative and financial change, with who made it and when." actions={<DemoChip />} />
-      <AuditView scope={scope} />
+      <PageHero eyebrow={`Read-only record · ${scopeLabel}`} title="Audit Log" period={false} />
+      <AuditLogView scope={scope} />
     </AnimatedPage>
   );
 }
@@ -999,8 +1056,8 @@ export function TrashPage() {
   const { scope, scopeLabel } = useScope();
   return (
     <AnimatedPage>
-      <PageHeader eyebrow={`Recoverable items · ${scopeLabel}`} title="Trash" description="Deleted records stay recoverable for 30 days." />
-      <TrashView scope={scope} />
+      <PageHero eyebrow={`Recoverable for ${TRASH_RETENTION_DAYS} days · ${scopeLabel}`} title="Trash" period={false} />
+      <TrashLogView scope={scope} />
     </AnimatedPage>
   );
 }

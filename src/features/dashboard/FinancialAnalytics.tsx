@@ -4,7 +4,7 @@ import type { Currency, DateRange } from "@/data/types";
 import { Reveal, CountUp } from "@/shared/motion";
 import { formatCount, formatMoney, formatPct } from "@/shared/format";
 import { SectionHeader, Segmented } from "@/shared/ui/controls";
-import { AreaLineChart, CHART_COLORS, Donut, HBarList } from "@/shared/ui/charts";
+import { AreaLineChart, CHART_COLORS, Donut, HBarList, SegmentBar } from "@/shared/ui/charts";
 import { byBranch, currenciesOf, expenseMix, paymentMix, serviceRanking, summarize, trend } from "@/services/analytics";
 
 export function useCurrencyTab(branchIds: string[]) {
@@ -92,7 +92,7 @@ export function FinancialAnalyticsView({
    */
   split?: boolean;
 }) {
-  const { branchIds, currencies, cur, setCurrency, fm, data, s, agingSegs, agingTotal } = a;
+  const { branchIds, currencies, cur, setCurrency, fm, data, s, agingSegs } = a;
 
   if (!branchIds.length) return null;
 
@@ -176,20 +176,7 @@ export function FinancialAnalyticsView({
             </div>
           </div>
           <div className="hint">Ageing of outstanding balances</div>
-          <div className="aging" role="img" aria-label="Outstanding balance ageing">
-            {agingSegs.map((a) =>
-              a.value > 0 ? <div key={a.label} style={{ flex: agingTotal ? a.value / agingTotal : 0, background: a.color }} title={`${a.label}: ${fm(a.value)}`} /> : null,
-            )}
-          </div>
-          <div className="aging-legend">
-            {agingSegs.map((a) => (
-              <div key={a.label}>
-                <i style={{ background: a.color }} />
-                <span>{a.label}</span>
-                <b>{fm(a.value)}</b>
-              </div>
-            ))}
-          </div>
+          <SegmentBar segments={agingSegs} format={fm} tipFormat={(n) => formatMoney(n, cur)} totalLabel="outstanding" ariaLabel="Outstanding balance ageing" />
         </Reveal>
 
         <Reveal hover className="card card-pad span-4">

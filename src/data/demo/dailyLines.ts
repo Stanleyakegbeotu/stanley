@@ -18,6 +18,7 @@ import { ACTIVE_BRANCHES, SERVICES, getBranch, servicePrice } from "../company";
 import { EXPENSE_CATEGORIES, PAYMENT_METHODS, type DateRange, type PaymentMethod } from "../types";
 import { DAILY, DATA_START, addDays, diffDays, isoDate } from "./generator";
 import { STAFF } from "./records";
+import { dayCommission, rateSummary } from "@/services/commission";
 
 export type VisitPayment = "Paid" | "Part-paid" | "Unpaid";
 
@@ -25,6 +26,8 @@ export interface PatientVisit {
   id: string;
   /** Anonymous patient reference. */
   patientRef: string;
+  /** Patient phone number (optional at registration; null when not provided). */
+  phone: string | null;
   branchId: string;
   at: Date;
   isNew: boolean;
@@ -259,6 +262,8 @@ function visitsForDay(branchId: string, dayIndex: number): PatientVisit[] {
     return {
       id: `V${branch.code}-${mmdd}-${String(p + 1).padStart(3, "0")}`,
       patientRef: patientRefOf(plan.ids[dayIndex]?.[p] ?? 0),
+      // No patient records were exported, so no phone numbers exist yet (never invented).
+      phone: null,
       branchId,
       at: times[p],
       isNew: plan.isNew[dayIndex]?.[p] ?? false,
@@ -280,7 +285,8 @@ function visitsForDay(branchId: string, dayIndex: number): PatientVisit[] {
 
 /* ─────────────── Expense lines ─────────────── */
 
-const EXPENSE_ITEMS: Record<string, string[]> = {
+/** What each expense category covers (also used to explain chart figures). */
+export const EXPENSE_ITEMS: Record<string, string[]> = {
   "Reagents & consumables": ["Reagent restock", "Laboratory consumables", "Sample bottles & tubes", "Contrast media", "Gloves & PPE"],
   Salaries: ["Monthly payroll"],
   Utilities: ["Electricity", "Diesel for generator", "Water supply", "Internet service"],
@@ -462,7 +468,7 @@ const commissionTime = (date: Date, visits: PatientVisit[]) => {
   return isoDate(date) === isoDate(new Date()) ? last : close;
 };
 
-function ledgerForDay(branchId: string, dayIndex: number, commissionRate: number): LedgerEntry[] {
+function ledgerForDay(branchId: string, dayIndex: number): LedgerEntry[] {
   const rec = DAILY[branchId]?.[dayIndex];
   if (!rec) return [];
   const date = addDays(DATA_START, dayIndex);
@@ -504,17 +510,18 @@ function ledgerForDay(branchId: string, dayIndex: number, commissionRate: number
   for (const e of expensesForDay(branchId, dayIndex)) {
     out.push({ id: e.id, branchId, at: e.at, kind: "expense", direction: "out", amount: e.amount, category: e.category, source: e.description, detail: `${e.category} · ${e.status}`, method: null, recordedBy: "Branch Manager", expense: e });
   }
-  if (rec.prCommission > 0) {
+  const commission = dayCommission(rec);
+  if (commission > 0) {
     out.push({
       id: `COM-${getBranch(branchId)?.code ?? "BR"}-${isoDate(date).replace(/-/g, "").slice(2)}`,
       branchId,
       at: commissionTime(date, visits),
       kind: "commission",
       direction: "out",
-      amount: rec.prCommission,
+      amount: commission,
       category: "PR commission",
       source: `PR commission · ${rec.referrals} referred patient${rec.referrals === 1 ? "" : "s"}`,
-      detail: `Accrued at the placeholder rate (${Math.round(commissionRate * 100)}%) on referred patients' bills`,
+      detail: `Accrued on referred patients' bills · ${rateSummary()}`,
       method: null,
       recordedBy: "System (accrued)",
     });
@@ -523,9 +530,9 @@ function ledgerForDay(branchId: string, dayIndex: number, commissionRate: number
 }
 
 /** Every income and expense line in the range for the given branches, newest first. */
-export function ledger(branchIds: string[], range: DateRange, commissionRate: number): LedgerEntry[] {
+export function ledger(branchIds: string[], range: DateRange): LedgerEntry[] {
   const out: LedgerEntry[] = [];
-  for (const id of branchIds) for (const i of dayIndexes(range)) out.push(...ledgerForDay(id, i, commissionRate));
+  for (const id of branchIds) for (const i of dayIndexes(range)) out.push(...ledgerForDay(id, i));
   return out.sort((a, b) => b.at.getTime() - a.at.getTime());
 }
 

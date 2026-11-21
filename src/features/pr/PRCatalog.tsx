@@ -22,6 +22,7 @@ import {
   Percent,
   Plus,
   RotateCcw,
+  Trash2,
   TrendingUp,
   UserRound,
   UserX,
@@ -34,8 +35,8 @@ import type { DateRange } from "@/data/types";
 import { DATA_START, TODAY, addDays, diffDays, isoDate } from "@/data/demo/generator";
 import { patientVisits, type PatientVisit } from "@/data/demo/dailyLines";
 import { LEGACY_BRANCH_ID, buildHospitalDirectory, hasPhone, hospitalKey, type HospitalEntry } from "@/data/legacy";
-import { recordedAgent, type AgentRecord } from "@/data/userRecords";
-import { DEMO_PR_COMMISSION_RATE } from "@/services/businessRules";
+import { NIGERIAN_BANKS, isNuban, recordedAgent, type AgentRecord } from "@/data/userRecords";
+import { COMMON_RATES, agentRate, hasAgentRates, pct, rateFor, rateSummary, setAgentRate, setCompanyRate, useCommission } from "@/services/commission";
 import { resolveRange } from "@/services/analytics";
 import { useMotionPreset } from "@/shared/motion";
 import { formatCount, formatMoney, formatShortDate, formatTime } from "@/shared/format";
@@ -46,6 +47,7 @@ import { Pagination } from "@/shared/ui/Pagination";
 import { SearchSelect, type SearchOption } from "@/shared/ui/SearchSelect";
 import { SummaryChips } from "@/features/dashboard/ExpensesPatients";
 import { AddAgentDialog } from "@/features/shared/createForms";
+import { MoveToTrashDialog } from "@/features/admin/AdminLogs";
 
 export type AgentActivity = Map<number, { referrals: number; revenue: number; commission: number }>;
 
@@ -85,6 +87,8 @@ export function PRCatalog({
   initialAgent?: number | null;
 }) {
   const { agents: allAgents, agentEdits } = useApp();
+  const commission = useCommission();
+  const [rateOpen, setRateOpen] = useState(false);
   const m = useMotionPreset();
   const inScope = !scope || scope.includes(LEGACY_BRANCH_ID);
   const agents = useMemo(() => (inScope ? allAgents : []), [inScope, allAgents]);
@@ -148,7 +152,7 @@ export function PRCatalog({
           { label: "PR agents", icon: Handshake, value: formatCount(agents.length), caption: `${formatCount(agents.length - unassigned.length)} with a hospital${added ? ` · ${added} added` : ""}` },
           { label: "Partner hospitals", icon: Hospital, value: formatCount(directory.length), caption: flagged ? `${flagged} codes need review` : "From agent assignments" },
           { label: `Referrals · ${periodText}`, icon: TrendingUp, value: formatCount(totals.referrals), caption: `${formatCount(activity.size)} agents referred · ${money(totals.revenue, true)}` },
-          { label: `Commission · ${periodText}`, icon: Percent, value: money(totals.commission), caption: "Placeholder rate until confirmed" },
+          { label: `Commission · ${periodText}`, icon: Percent, value: money(totals.commission), caption: `${rateSummary()}` },
         ]}
       />
 
@@ -173,7 +177,11 @@ export function PRCatalog({
               <Pencil size={15} /> Edited <b>{edited}</b>
             </button>
           )}
+          <button type="button" onClick={() => setRateOpen(true)} title="Change the commission rate for all PR agents">
+            <Percent size={15} /> Commission rate <b>{pct(commission.rate)}</b>
+          </button>
         </div>
+        <RateDialog open={rateOpen} onClose={() => setRateOpen(false)} />
         <SelectMenu
           value={sort}
           ariaLabel="Sort hospitals"
@@ -420,7 +428,7 @@ function AgentsModal({
           { label: "PR agents", icon: Handshake, value: formatCount(base.length), caption: `${formatCount(base.filter((a) => hasPhone(a.phone)).length)} with a phone number` },
           { label: `Referred · ${periodText}`, icon: TrendingUp, value: formatCount(referred.length), caption: `${formatCount(sum.referrals)} referrals` },
           { label: "Revenue generated", icon: Banknote, value: money(sum.revenue), caption: "Billed value of referred tests" },
-          { label: "Commission", icon: Percent, value: money(sum.commission), caption: "Placeholder rate until confirmed" },
+          { label: "Commission", icon: Percent, value: money(sum.commission), caption: rateSummary() },
         ]}
       />
 
@@ -551,7 +559,9 @@ function profileRange(p: ProfilePeriod, day: string): DateRange {
 const inRange = (d: Date, r: DateRange) => d >= r.from && d < addDays(r.to, 1);
 
 function AgentProfile({ agent, directory, onClose }: { agent: AgentRecord; directory: HospitalEntry[]; activity?: AgentActivity; periodText?: string; onClose: () => void }) {
-  const { revertAgent, showToast, agentEdits } = useApp();
+  const { revertAgent, showToast, agentEdits, moveAgentToTrash } = useApp();
+  const [trashOpen, setTrashOpen] = useState(false);
+  useCommission(); // re-render when a rate changes
   const m = useMotionPreset();
   const titleId = useId();
   const box = useRef<HTMLDivElement>(null);
@@ -576,7 +586,7 @@ function AgentProfile({ agent, directory, onClose }: { agent: AgentRecord; direc
   const selRange = useMemo(() => profileRange(period, day), [period, day]);
   const sumOf = (list: PatientVisit[]) => {
     const revenue = list.reduce((s, v) => s + v.billed, 0);
-    return { patients: list.length, revenue, commission: revenue * DEMO_PR_COMMISSION_RATE };
+    return { patients: list.length, revenue, commission: revenue * rateFor(agent.id) };
   };
   const all = sumOf(allVisits);
   const month = sumOf(allVisits.filter((v) => inRange(v.at, monthRange)));
@@ -656,6 +666,32 @@ function AgentProfile({ agent, directory, onClose }: { agent: AgentRecord; direc
                   </code>
                 </div>
                 <p>{transferred ? `Transferred from ${recordedKey || "no hospital"} (as recorded).` : first ? `First referral on ${formatShortDate(first.at)} ${first.at.getFullYear()}.` : "No referrals recorded yet."}</p>
+              </div>
+              <div className="fd-preview">
+                <span className="fd-preview-title">Payment account</span>
+                <div className="fd-preview-row">
+                  <span>Bank</span>
+                  <code>{agent.bank?.bankName ?? "Not on record"}</code>
+                </div>
+                <div className="fd-preview-row">
+                  <span>Account no.</span>
+                  <code className="num">{agent.bank?.accountNumber ?? "—"}</code>
+                </div>
+                <div className="fd-preview-row">
+                  <span>Account name</span>
+                  <code>{agent.bank?.accountName ?? "—"}</code>
+                </div>
+                <div className="fd-preview-row">
+                  <span>Commission</span>
+                  <code>
+                    {pct(rateFor(agent.id))} · {agentRate(agent.id) !== undefined ? "own rate" : "company rate"}
+                  </code>
+                </div>
+                {!agent.bank && (
+                  <button type="button" className="ap-addbank" onClick={() => setTab("edit")}>
+                    <Plus size={14} /> Add bank details
+                  </button>
+                )}
               </div>
             </div>
           </aside>
@@ -754,7 +790,7 @@ function AgentProfile({ agent, directory, onClose }: { agent: AgentRecord; direc
               {tab === "edit" ? (
                 <span className="left">Changes last for this session until the database is connected.</span>
               ) : (
-                <span className="left">Commission uses the placeholder rate ({Math.round(DEMO_PR_COMMISSION_RATE * 100)}%) until the real rate is confirmed.</span>
+                <span className="left">Commission at {pct(rateFor(agent.id))} ({agentRate(agent.id) !== undefined ? "this agent's own rate" : "company rate"}). Change it under Edit profile.</span>
               )}
               {edit && tab !== "edit" && (
                 <Button
@@ -765,6 +801,11 @@ function AgentProfile({ agent, directory, onClose }: { agent: AgentRecord; direc
                   }}
                 >
                   <RotateCcw size={15} /> Restore recorded details
+                </Button>
+              )}
+              {agent.source === "user" && (
+                <Button variant="ghost" className="st-trash" onClick={() => setTrashOpen(true)}>
+                  <Trash2 size={15} /> Move to trash
                 </Button>
               )}
               <Button variant="secondary" onClick={onClose}>
@@ -781,6 +822,18 @@ function AgentProfile({ agent, directory, onClose }: { agent: AgentRecord; direc
       </motion.div>
     </AnimatePresence>
     {viewing && <PatientRecordModal visit={viewing} onClose={() => setViewing(null)} />}
+    <MoveToTrashDialog
+      open={trashOpen}
+      name={agent.name}
+      what="PR agent (added in the app)"
+      onClose={() => setTrashOpen(false)}
+      onConfirm={(reason) => {
+        moveAgentToTrash(agent.id, reason);
+        showToast(`${agent.name} moved to trash — restore it from Trash within 30 days`);
+        setTrashOpen(false);
+        onClose();
+      }}
+    />
     </>,
     document.body,
   );
@@ -849,7 +902,7 @@ function ReferredPatients({ visits, onOpen }: { visits: PatientVisit[]; onOpen: 
                   <td className="right num ep-nowrap">
                     <strong>{money(v.billed)}</strong>
                   </td>
-                  <td className="right num ep-nowrap">{money(v.billed * DEMO_PR_COMMISSION_RATE)}</td>
+                  <td className="right num ep-nowrap">{money(v.billed * rateFor(v.agentId ?? 0))}</td>
                   <td>
                     <Badge tone={v.payment === "Paid" ? "ok" : v.payment === "Part-paid" ? "warn" : "danger"} dot>
                       {v.payment}
@@ -867,16 +920,38 @@ function ReferredPatients({ visits, onOpen }: { visits: PatientVisit[]; onOpen: 
 }
 
 function AgentEditForm({ agent, directory, transferred, recordedKey, onSaved }: { agent: AgentRecord; directory: HospitalEntry[]; transferred: boolean; recordedKey: string | null; onSaved: () => void }) {
-  const { editAgent, showToast } = useApp();
+  const { editAgent, setAgentBank, showToast } = useApp();
+  const commission = useCommission();
   const key = hospitalKey(agent.hospital);
   const [name, setName] = useState(agent.name);
   const [phone, setPhone] = useState(hasPhone(agent.phone) ? agent.phone : "");
   const [hospital, setHospital] = useState(key);
+  // Payment account (where commission is paid).
+  const [bankName, setBankName] = useState(agent.bank?.bankName ?? "");
+  const [accountNumber, setAccountNumber] = useState(agent.bank?.accountNumber ?? "");
+  const [accountName, setAccountName] = useState(agent.bank?.accountName ?? "");
+  // Commission rate: company rate, or this agent's own rate (in %).
+  const own = agentRate(agent.id);
+  const [useOwn, setUseOwn] = useState(own !== undefined);
+  const [ownPct, setOwnPct] = useState(own !== undefined ? String(+(own * 100).toFixed(2)) : String(+(commission.rate * 100).toFixed(2)));
+
   const options: SearchOption[] = [
     { value: "", label: NO_HOSPITAL, keywords: "none unassigned" },
     ...directory.map((h) => ({ value: h.key, label: h.key, description: `${h.agentCount} agent${h.agentCount === 1 ? "" : "s"}`, keywords: h.rawVariants.join(" ") })),
   ];
-  const changed = name.trim() !== agent.name || (phone.trim() || "N/A") !== agent.phone || hospital !== key;
+  const bankOptions: SearchOption[] = NIGERIAN_BANKS.map((b) => ({ value: b, label: b }));
+
+  const anyBank = !!(bankName.trim() || accountNumber.trim() || accountName.trim());
+  const bankComplete = !!(bankName.trim() && isNuban(accountNumber) && accountName.trim());
+  const bankError = anyBank && !bankComplete ? (!bankName.trim() ? "Choose the bank." : !isNuban(accountNumber) ? "The account number must be 10 digits." : "Enter the account name.") : null;
+  const pctNum = Number(ownPct);
+  const rateError = useOwn && (!ownPct.trim() || !Number.isFinite(pctNum) || pctNum < 0 || pctNum > 50) ? "Enter a rate between 0% and 50%." : null;
+
+  const detailsChanged = name.trim() !== agent.name || (phone.trim() || "N/A") !== agent.phone || hospital !== key;
+  const bankChanged = bankName.trim() !== (agent.bank?.bankName ?? "") || accountNumber.trim() !== (agent.bank?.accountNumber ?? "") || accountName.trim() !== (agent.bank?.accountName ?? "");
+  const rateChanged = useOwn ? own === undefined || Math.abs(own * 100 - pctNum) > 1e-9 : own !== undefined;
+  const changed = detailsChanged || bankChanged || rateChanged;
+
   return (
     <>
       <section className="fd-section">
@@ -916,15 +991,77 @@ function AgentEditForm({ agent, directory, transferred, recordedKey, onSaved }: 
         </div>
         {hospital !== key && (
           <p className="fd-note">
-            Transfer: <b>{key || NO_HOSPITAL}</b> → <b>{hospital || NO_HOSPITAL}</b>. The agent moves to the new hospital's list straight away.
+            Transfer: <b>{key || NO_HOSPITAL}</b> → <b>{hospital || NO_HOSPITAL}</b>. The agent moves to the new hospital&apos;s list straight away.
           </p>
         )}
       </section>
+
+      <section className="fd-section">
+        <h3 className="fd-section-title">
+          <span>Payment account</span>
+        </h3>
+        <div className="fd-grid">
+          <div className="fd-field full">
+            <span className="fd-label">Bank</span>
+            <SearchSelect value={bankName} options={bankOptions} ariaLabel="Bank" placeholder="Choose the bank" searchPlaceholder="Search banks or type another" allowCreate createLabel={(t) => `Use “${t}”`} onChange={setBankName} />
+          </div>
+          <label className="fd-field">
+            <span className="fd-label">Account number</span>
+            <input value={accountNumber} onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, "").slice(0, 10))} placeholder="10 digits" inputMode="numeric" className="num" />
+          </label>
+          <label className="fd-field">
+            <span className="fd-label">Account name</span>
+            <input value={accountName} onChange={(e) => setAccountName(e.target.value)} placeholder="Name on the bank account" />
+          </label>
+        </div>
+        <p className="fd-note">The account name can differ from the name the agent is listed under — enter it exactly as the bank shows it. Leave all three blank if the details are not known yet.</p>
+        {bankError && <p className="fd-note ap-error">{bankError}</p>}
+      </section>
+
+      <section className="fd-section">
+        <h3 className="fd-section-title">
+          <span>Commission rate</span>
+        </h3>
+        <div className="ap-rate">
+          <label className={`ap-rate-opt ${!useOwn ? "is-on" : ""}`}>
+            <input type="radio" checked={!useOwn} onChange={() => setUseOwn(false)} />
+            <span>
+              <b>Company rate · {pct(commission.rate)}</b>
+              <small>Follows the rate set on the PR page.</small>
+            </span>
+          </label>
+          <label className={`ap-rate-opt ${useOwn ? "is-on" : ""}`}>
+            <input type="radio" checked={useOwn} onChange={() => setUseOwn(true)} />
+            <span>
+              <b>Own rate for this agent</b>
+              <small>Replaces the company rate for this agent only.</small>
+            </span>
+            {useOwn && (
+              <span className="ap-rate-own">
+                <span className="rate-chips">
+                  {COMMON_RATES.map((r) => (
+                    <button key={r} type="button" className={Math.abs(pctNum / 100 - r) < 1e-9 ? "is-on" : ""} onClick={() => setOwnPct(String(+(r * 100).toFixed(2)))}>
+                      {pct(r)}
+                    </button>
+                  ))}
+                </span>
+                <span className="ap-rate-input">
+                  <input value={ownPct} onChange={(e) => setOwnPct(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" aria-label="Own commission rate in percent" />%
+                </span>
+              </span>
+            )}
+          </label>
+        </div>
+        {rateError && <p className="fd-note ap-error">{rateError}</p>}
+      </section>
+
       <div className="ap-save">
         <Button
-          disabled={!name.trim() || !changed}
+          disabled={!name.trim() || !changed || !!bankError || !!rateError}
           onClick={() => {
-            editAgent(agent.id, { name, phone, hospital });
+            if (detailsChanged) editAgent(agent.id, { name, phone, hospital });
+            if (bankChanged) setAgentBank(agent.id, anyBank ? { bankName, accountNumber, accountName } : null);
+            if (rateChanged) setAgentRate(agent.id, useOwn ? pctNum / 100 : null, name.trim());
             showToast(hospital !== key ? `${name.trim()} transferred to ${hospital || "no hospital"}` : `${name.trim()} updated`);
             onSaved();
           }}
@@ -933,5 +1070,70 @@ function AgentEditForm({ agent, directory, transferred, recordedKey, onSaved }: 
         </Button>
       </div>
     </>
+  );
+}
+
+/* ─────────────── Company commission rate ─────────────── */
+
+function RateDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { showToast } = useApp();
+  const commission = useCommission();
+  const [value, setValue] = useState(String(+(commission.rate * 100).toFixed(2)));
+  useEffect(() => {
+    if (open) setValue(String(+(commission.rate * 100).toFixed(2)));
+  }, [open, commission.rate]);
+  const n = Number(value);
+  const error = !value.trim() || !Number.isFinite(n) || n < 0 || n > 50 ? "Enter a rate between 0% and 50%." : null;
+  const own = Object.keys(commission.overrides).length;
+  const save = () => {
+    if (error) return;
+    setCompanyRate(n / 100);
+    showToast(`Company commission rate set to ${pct(n / 100)}`);
+    onClose();
+  };
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      icon={Percent}
+      title="Commission rate"
+      description="The flat rate paid to PR agents on the bills of the patients they refer."
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={save} disabled={!!error}>
+            Save rate
+          </Button>
+        </>
+      }
+    >
+      <div className="rate-dlg">
+        <label className="rate-dlg-field">
+          <span>Company rate</span>
+          <span className="rate-dlg-input">
+            <input value={value} onChange={(e) => setValue(e.target.value.replace(/[^\d.]/g, ""))} onKeyDown={(e) => e.key === "Enter" && save()} inputMode="decimal" autoFocus aria-label="Company commission rate in percent" />
+            <b>%</b>
+          </span>
+        </label>
+        <div className="rate-chips" role="group" aria-label="Usual rates">
+          {COMMON_RATES.map((r) => (
+            <button key={r} type="button" className={Math.abs(n / 100 - r) < 1e-9 ? "is-on" : ""} onClick={() => setValue(String(+(r * 100).toFixed(2)))}>
+              {pct(r)}
+              {r === 0.2 && <small>rare</small>}
+            </button>
+          ))}
+        </div>
+        {error ? <p className="rate-dlg-error">{error}</p> : <p className="rate-dlg-eg">Example: a patient whose tests total ₦100,000 earns the agent {formatMoney((100_000 * n) / 100, "NGN")}.</p>}
+        <ul className="rate-dlg-notes">
+          <li>Applies to every PR agent who does not have their own rate{own ? ` — ${own} agent${own === 1 ? " has" : "s have"} their own rate and keep it` : ""}.</li>
+          <li>Updates commission on the PR page, Finance &amp; Expenses, the dashboard and every report straight away.</li>
+          <li>An agent&apos;s own rate is set on their profile under Edit profile.</li>
+          <li>Saved for this session until the database is connected.</li>
+        </ul>
+        {hasAgentRates() && <p className="rate-dlg-eg">Current: {rateSummary()}.</p>}
+      </div>
+    </Modal>
   );
 }

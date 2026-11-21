@@ -5,14 +5,17 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { DEFAULT_THEME, isThemeId, type ThemeId } from "./themes";
 import { useHashRoute, type Route } from "./router";
 import { NOTIFICATIONS, type NotificationItem } from "@/data/demo/records";
-import { CURRENT_USER } from "@/data/company";
-import { BASELINE_AGENTS, EMPTY_INVENTORY_CHANGES, applyAgentEdits, mergeAgents, nextServiceId, nextUserId, type AddedService, type AgentEdit, type AgentRecord, type InventoryChanges } from "@/data/userRecords";
+import { CURRENT_USER, getBranch } from "@/data/company";
+import { LEGACY_BRANCH_ID, hospitalKey } from "@/data/legacy";
+import { logAudit } from "@/services/audit";
+import { BASELINE_AGENTS, EMPTY_INVENTORY_CHANGES, applyAgentEdits, mergeAgents, nextServiceId, nextUserId, type AddedService, type AgentEdit, type AgentRecord, type BankDetails, type InventoryChanges, nextStaffId, type StaffRecord } from "@/data/userRecords";
 import type { PeriodSelection } from "@/data/types";
 
 /* localStorage is a per-viewer convenience only; every read/write is guarded. */
@@ -64,6 +67,19 @@ interface AppStateValue {
   agentEdits: Record<number, AgentEdit>;
   editAgent: (id: number, edit: { name: string; phone: string; hospital: string }) => void;
   revertAgent: (id: number) => void;
+  /** Agent payment accounts (session until the database is connected). */
+  agentBanks: Record<number, BankDetails>;
+  setAgentBank: (id: number, bank: Omit<BankDetails, "at"> | null) => void;
+  /** Staff created in STANLEY (session until the database is connected). */
+  staff: StaffRecord[];
+  addStaff: (s: Omit<StaffRecord, "id" | "createdAt">) => StaffRecord;
+  editStaff: (id: string, patch: Partial<Omit<StaffRecord, "id" | "createdAt">>) => void;
+  /** Deleted records kept 30 days (only records created in STANLEY can be deleted). */
+  trash: TrashItem[];
+  moveStaffToTrash: (id: string, reason?: string) => void;
+  moveAgentToTrash: (id: number, reason?: string) => void;
+  restoreFromTrash: (trashId: string) => void;
+  purgeFromTrash: (trashId: string) => void;
   /** Session-only inventory changes layered over the read-only legacy catalogue. */
   inventory: InventoryChanges;
   renameCategory: (key: string, name: string) => void;
@@ -71,6 +87,25 @@ interface AppStateValue {
   revertService: (id: number) => void;
   addService: (s: Omit<AddedService, "id" | "createdAt">) => AddedService;
 }
+
+/** A deleted record and everything needed to restore it. */
+export interface TrashItem {
+  id: string;
+  kind: "staff" | "agent";
+  name: string;
+  type: string;
+  branchId: string;
+  deletedBy: string;
+  /** ISO date. Permanently removed 30 days later. */
+  deletedAt: string;
+  reason?: string;
+  staff?: StaffRecord;
+  agent?: AgentRecord;
+}
+
+export const TRASH_RETENTION_DAYS = 30;
+
+const STAFF_FIELD_LABEL: Partial<Record<keyof StaffRecord, string>> = { name: "Name", phone: "Phone", email: "Email", address: "Address", role: "Role", employment: "Employment", startDate: "Start date", status: "Status", notes: "Notes" };
 
 const Ctx = createContext<AppStateValue | null>(null);
 
@@ -104,60 +139,164 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [userAgents, setUserAgents] = useState<AgentRecord[]>([]);
   const [agentEdits, setAgentEdits] = useState<Record<number, AgentEdit>>({});
   // Everyone reading `agents` sees edits (e.g. transfers); the legacy export itself is never changed.
-  const agents = useMemo(() => applyAgentEdits(mergeAgents(userAgents), agentEdits), [userAgents, agentEdits]);
+  const [agentBanks, setAgentBanks] = useState<Record<number, BankDetails>>({});
+  const agents = useMemo(() => {
+    const list = applyAgentEdits(mergeAgents(userAgents), agentEdits);
+    return Object.keys(agentBanks).length ? list.map((a) => (agentBanks[a.id] ? { ...a, bank: agentBanks[a.id] } : a)) : list;
+  }, [userAgents, agentEdits, agentBanks]);
+  const [staff, setStaff] = useState<StaffRecord[]>([]);
+  // Live copy so a new record (and its id) is known immediately, not after the next render.
+  const staffRef = useRef<StaffRecord[]>([]);
+  const branchLabel = (id: string | null | undefined) => (id ? `${getBranch(id)?.name ?? id} branch` : "");
+  const addStaff = useCallback((s: Omit<StaffRecord, "id" | "createdAt">) => {
+    const created: StaffRecord = { ...s, name: s.name.trim(), email: s.email.trim(), phone: s.phone.trim(), id: nextStaffId(staffRef.current), createdAt: new Date().toISOString() };
+    staffRef.current = [...staffRef.current, created];
+    setStaff(staffRef.current);
+    logAudit({ category: "Staff", action: "Staff added", record: `${created.name} (${created.id})`, details: `${created.role} at ${branchLabel(created.branchId)} · ${created.employment}, starting ${created.startDate}`, branchId: created.branchId });
+    return created;
+  }, []);
+  const editStaff = useCallback((id: string, patch: Partial<Omit<StaffRecord, "id" | "createdAt">>) => {
+    const before = staffRef.current.find((x) => x.id === id);
+    staffRef.current = staffRef.current.map((x) => (x.id === id ? { ...x, ...patch, updatedAt: new Date().toISOString() } : x));
+    setStaff(staffRef.current);
+    if (!before) return;
+    const changes = (Object.keys(patch) as (keyof typeof patch)[])
+      .filter((k) => (patch[k] ?? "") !== (before[k] ?? ""))
+      .map((k) => `${STAFF_FIELD_LABEL[k] ?? k}: ${before[k] || "—"} → ${patch[k] || "—"}`);
+    if (changes.length)
+      logAudit({ category: "Staff", action: patch.status && patch.status !== before.status ? `Status changed to ${patch.status}` : patch.role && patch.role !== before.role ? "Role changed" : "Staff details updated", record: `${before.name} (${id})`, details: changes.join(" · "), branchId: before.branchId });
+  }, []);
+  const setAgentBank = useCallback(
+    (id: number, bank: Omit<BankDetails, "at"> | null) => {
+      const a = agents.find((x) => x.id === id);
+      setAgentBanks((b) => {
+        const next = { ...b };
+        if (bank) next[id] = { bankName: bank.bankName.trim(), accountNumber: bank.accountNumber.trim(), accountName: bank.accountName.trim(), at: new Date().toISOString() };
+        else delete next[id];
+        return next;
+      });
+      logAudit({
+        category: "PR agents",
+        action: bank ? (a?.bank ? "Bank details changed" : "Bank details added") : "Bank details removed",
+        record: `${a?.name ?? "PR agent"} (#${id})`,
+        details: bank ? `${bank.bankName.trim()} · account ending ${bank.accountNumber.trim().slice(-4)} · ${bank.accountName.trim()}` : `Removed ${a?.bank?.bankName ?? "bank"} details`,
+        branchId: LEGACY_BRANCH_ID,
+      });
+    },
+    [agents],
+  );
   const editAgent = useCallback(
     (id: number, edit: { name: string; phone: string; hospital: string }) => {
       const clean = { name: edit.name.trim(), phone: edit.phone.trim() || "N/A", hospital: edit.hospital };
+      const before = agents.find((x) => x.id === id);
+      if (before) {
+        const changes = [
+          before.name !== clean.name ? `Name: ${before.name} → ${clean.name}` : "",
+          before.phone !== clean.phone ? `Phone: ${before.phone} → ${clean.phone}` : "",
+          hospitalKey(before.hospital) !== clean.hospital ? `Hospital: ${hospitalKey(before.hospital) || "none"} → ${clean.hospital || "none"}` : "",
+        ].filter(Boolean);
+        if (changes.length) logAudit({ category: "PR agents", action: hospitalKey(before.hospital) !== clean.hospital ? "Agent transferred" : "Agent details updated", record: `${before.name} (#${id})`, details: changes.join(" · "), branchId: LEGACY_BRANCH_ID });
+      }
       if (userAgents.some((a) => a.id === id)) {
         setUserAgents((list) => list.map((a) => (a.id === id ? { ...a, ...clean } : a)));
         return;
       }
       setAgentEdits((e) => ({ ...e, [id]: { ...clean, at: new Date().toISOString() } }));
     },
-    [userAgents],
+    [userAgents, agents],
   );
   const revertAgent = useCallback(
-    (id: number) =>
+    (id: number) => {
+      const recorded = BASELINE_AGENTS.find((a) => a.id === id);
       setAgentEdits((e) => {
         const next = { ...e };
         delete next[id];
         return next;
-      }),
+      });
+      logAudit({ category: "PR agents", action: "Restored to recorded details", record: `${recorded?.name ?? "PR agent"} (#${id})`, details: "Session changes removed; the legacy record applies again", branchId: LEGACY_BRANCH_ID });
+    },
     [],
   );
+
+  /* ── Trash: only records created in STANLEY can be deleted (the legacy baseline never is) ── */
+  const [trash, setTrash] = useState<TrashItem[]>([]);
+  const trashRef = useRef<TrashItem[]>([]);
+  const commitTrash = (list: TrashItem[]) => {
+    trashRef.current = list;
+    setTrash(list);
+  };
+  const moveStaffToTrash = useCallback((id: string, reason?: string) => {
+    const s = staffRef.current.find((x) => x.id === id);
+    if (!s) return;
+    staffRef.current = staffRef.current.filter((x) => x.id !== id);
+    setStaff(staffRef.current);
+    commitTrash([{ id: `TR-${Date.now()}`, kind: "staff", name: s.name, type: `Staff · ${s.role}`, branchId: s.branchId, deletedBy: CURRENT_USER.name, deletedAt: new Date().toISOString(), reason: reason?.trim() || undefined, staff: s }, ...trashRef.current]);
+    logAudit({ category: "Trash", action: "Moved to trash", record: `${s.name} (${s.id})`, details: `Staff · ${s.role}${reason?.trim() ? ` · Reason: ${reason.trim()}` : ""} · kept 30 days`, branchId: s.branchId });
+  }, []);
+  const moveAgentToTrash = useCallback(
+    (id: number, reason?: string) => {
+      const a = userAgents.find((x) => x.id === id);
+      if (!a) return;
+      setUserAgents((list) => list.filter((x) => x.id !== id));
+      commitTrash([{ id: `TR-${Date.now()}`, kind: "agent", name: a.name, type: "PR agent (added in app)", branchId: LEGACY_BRANCH_ID, deletedBy: CURRENT_USER.name, deletedAt: new Date().toISOString(), reason: reason?.trim() || undefined, agent: a }, ...trashRef.current]);
+      logAudit({ category: "Trash", action: "Moved to trash", record: `${a.name} (#${a.id})`, details: `PR agent${reason?.trim() ? ` · Reason: ${reason.trim()}` : ""} · kept 30 days`, branchId: LEGACY_BRANCH_ID });
+    },
+    [userAgents],
+  );
+  const restoreFromTrash = useCallback((trashId: string) => {
+    const t = trashRef.current.find((x) => x.id === trashId);
+    if (!t) return;
+    if (t.staff) {
+      staffRef.current = [...staffRef.current, t.staff];
+      setStaff(staffRef.current);
+    }
+    if (t.agent) setUserAgents((list) => [...list, t.agent!]);
+    commitTrash(trashRef.current.filter((x) => x.id !== trashId));
+    logAudit({ category: "Trash", action: "Restored from trash", record: t.name, details: t.type, branchId: t.branchId });
+  }, []);
+  const purgeFromTrash = useCallback((trashId: string) => {
+    const t = trashRef.current.find((x) => x.id === trashId);
+    if (!t) return;
+    commitTrash(trashRef.current.filter((x) => x.id !== trashId));
+    logAudit({ category: "Trash", action: "Deleted permanently", record: t.name, details: `${t.type} · cannot be restored`, branchId: t.branchId });
+  }, []);
   const [inventory, setInventory] = useState<InventoryChanges>(EMPTY_INVENTORY_CHANGES);
-  const renameCategory = useCallback(
-    (key: string, name: string) =>
-      setInventory((inv) => {
-        const categoryNames = { ...inv.categoryNames };
-        if (name.trim() && name.trim() !== key) categoryNames[key] = name.trim();
-        else delete categoryNames[key];
-        return { ...inv, categoryNames };
-      }),
-    [],
-  );
-  const editService = useCallback(
-    (id: number, edit: { name?: string; price?: number | null }) =>
-      setInventory((inv) => {
-        const added = inv.added.find((s) => s.id === id);
-        if (added) return { ...inv, added: inv.added.map((s) => (s.id === id ? { ...s, name: edit.name ?? s.name, price: edit.price ?? s.price } : s)) };
-        return { ...inv, edits: { ...inv.edits, [id]: { ...edit, at: new Date().toISOString() } } };
-      }),
-    [],
-  );
-  const revertService = useCallback(
-    (id: number) =>
-      setInventory((inv) => {
-        const edits = { ...inv.edits };
-        delete edits[id];
-        return { ...inv, edits };
-      }),
-    [],
-  );
+  const renameCategory = useCallback((key: string, name: string) => {
+    setInventory((inv) => {
+      const categoryNames = { ...inv.categoryNames };
+      if (name.trim() && name.trim() !== key) categoryNames[key] = name.trim();
+      else delete categoryNames[key];
+      return { ...inv, categoryNames };
+    });
+    logAudit({ category: "Catalogue", action: name.trim() && name.trim() !== key ? "Category renamed" : "Category name restored", record: key, details: name.trim() && name.trim() !== key ? `Shown as “${name.trim()}”` : "Back to the recorded name", branchId: null });
+  }, []);
+  const editService = useCallback((id: number, edit: { name?: string; price?: number | null }) => {
+    setInventory((inv) => {
+      const added = inv.added.find((s) => s.id === id);
+      if (added) return { ...inv, added: inv.added.map((s) => (s.id === id ? { ...s, name: edit.name ?? s.name, price: edit.price ?? s.price } : s)) };
+      return { ...inv, edits: { ...inv.edits, [id]: { ...edit, at: new Date().toISOString() } } };
+    });
+    logAudit({
+      category: "Catalogue",
+      action: "Service updated",
+      record: `${edit.name ?? "Service"} (#${id})`,
+      details: [edit.name !== undefined ? `Name: ${edit.name}` : "", edit.price !== undefined ? `Price: ${edit.price === null ? "no price" : `₦${edit.price.toLocaleString("en-NG")}`}` : ""].filter(Boolean).join(" · "),
+      branchId: null,
+    });
+  }, []);
+  const revertService = useCallback((id: number) => {
+    setInventory((inv) => {
+      const edits = { ...inv.edits };
+      delete edits[id];
+      return { ...inv, edits };
+    });
+    logAudit({ category: "Catalogue", action: "Service restored", record: `Service #${id}`, details: "Back to the recorded name and price", branchId: null });
+  }, []);
   const addService = useCallback(
     (s: Omit<AddedService, "id" | "createdAt">) => {
       const record: AddedService = { ...s, id: nextServiceId(inventory.added), createdAt: new Date().toISOString() };
       setInventory((inv) => ({ ...inv, added: [...inv.added, record] }));
+      logAudit({ category: "Catalogue", action: "Service added", record: `${record.name} (#${record.id})`, details: `${record.category} · ₦${record.price.toLocaleString("en-NG")}`, branchId: null });
       return record;
     },
     [inventory.added],
@@ -174,6 +313,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         createdAt: new Date().toISOString(),
       };
       setUserAgents((list) => [...list, record]);
+      logAudit({ category: "PR agents", action: "PR agent added", record: `${record.name} (#${record.id})`, details: `${record.hospital || "No hospital"} · ${record.phone}`, branchId: LEGACY_BRANCH_ID });
       return record;
     },
     [userAgents],
@@ -264,13 +404,23 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       agentEdits,
       editAgent,
       revertAgent,
+      agentBanks,
+      setAgentBank,
+      staff,
+      addStaff,
+      editStaff,
+      trash,
+      moveStaffToTrash,
+      moveAgentToTrash,
+      restoreFromTrash,
+      purgeFromTrash,
       inventory,
       renameCategory,
       editService,
       revertService,
       addService,
     }),
-    [theme, setTheme, collapsed, setCollapsed, context, period, route, navigate, notifications, markRead, markAllRead, toast, showToast, assistantOpen, assistantQuestion, askAssistant, signOutOpen, agents, userAgents, addAgent, agentEdits, editAgent, revertAgent, inventory, renameCategory, editService, revertService, addService],
+    [theme, setTheme, collapsed, setCollapsed, context, period, route, navigate, notifications, markRead, markAllRead, toast, showToast, assistantOpen, assistantQuestion, askAssistant, signOutOpen, agents, userAgents, addAgent, agentEdits, editAgent, revertAgent, agentBanks, setAgentBank, staff, addStaff, editStaff, trash, moveStaffToTrash, moveAgentToTrash, restoreFromTrash, purgeFromTrash, inventory, renameCategory, editService, revertService, addService],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

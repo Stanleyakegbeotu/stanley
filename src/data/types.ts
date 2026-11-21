@@ -69,7 +69,7 @@ export interface DayRecord {
   /** Older patient balances settled today (oldest first). */
   recovered: number;
   expenses: number;
-  prCommission: number;
+  // PR commission is not stored: it depends on the current rates — see services/commission.ts dayCommission().
   /** Aligned with SERVICES (the real catalogue). */
   serviceCounts: number[];
   /** One entry per referred patient: the legacy PR agent id and that patient's billed value. */
