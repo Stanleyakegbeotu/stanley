@@ -1,0 +1,230 @@
+/*
+ * STANLEY design tokens.
+ * Medical Teal is the reference implementation; every other theme only
+ * re-maps the same token names, so components never reference raw colours.
+ * The theme attribute lives on <html>, so portalled dropdowns, popovers and
+ * modals inherit the active theme automatically. Light mode only.
+ */
+:root,
+[data-theme="medical-teal"] {
+  --sb-1: #0f4c48;
+  --sb-2: #0a3936;
+  --sb-ink: #eef7f5;
+  --sb-muted: #a8cdc7;
+  --sb-faint: rgba(255, 255, 255, 0.09);
+  --sb-hover: rgba(255, 255, 255, 0.07);
+  --sb-active: rgba(255, 255, 255, 0.14);
+  --sb-accent: #74dcc4;
+
+  --brand-950: #0b3633;
+  --brand-800: #185753;
+  --brand-700: #21655f;
+  --brand-600: #2a746e;
+  --brand-500: #378680;
+  --brand-400: #5aa59d;
+  --brand-200: #b9dcd6;
+  --brand-100: #dcefeb;
+  --brand-50: #eff7f5;
+
+  --banner-1: #29706b;
+  --banner-2: #3e8d86;
+  --banner-strip: rgba(6, 48, 45, 0.3);
+  --live-bg: #d3f5e8;
+  --live-ink: #0f5b40;
+
+  --canvas: #f5f7f7;
+  --canvas-2: #edf2f1;
+  --line: #e1e8e7;
+  --line-2: #d0dad9;
+  --ink: #10201f;
+  --ink-2: #344645;
+  --muted: #667877;
+  --faint: #93a3a2;
+}
+
+[data-theme="clinical-blue"] {
+  --sb-1: #133f68;
+  --sb-2: #0c2d4c;
+  --sb-muted: #adc6de;
+  --sb-accent: #86bdf2;
+  --brand-950: #0b2a47;
+  --brand-800: #164a7a;
+  --brand-700: #1c5a92;
+  --brand-600: #2368a8;
+  --brand-500: #2f7bc0;
+  --brand-400: #5b9bd5;
+  --brand-200: #bcd6ee;
+  --brand-100: #deebf7;
+  --brand-50: #f0f6fc;
+  --banner-1: #1d5891;
+  --banner-2: #3079ba;
+  --banner-strip: rgba(7, 32, 60, 0.3);
+  --live-bg: #d8ecff;
+  --live-ink: #124a80;
+  --canvas: #f5f7fa;
+  --canvas-2: #edf1f6;
+  --line: #e0e6ee;
+  --line-2: #cfd9e4;
+  --ink: #0f1c2c;
+  --ink-2: #33445a;
+  --muted: #65758a;
+  --faint: #95a2b3;
+}
+
+[data-theme="slate-grey"] {
+  --sb-1: #2b3544;
+  --sb-2: #1d2531;
+  --sb-muted: #b5bfcd;
+  --sb-accent: #b3c3d8;
+  --brand-950: #1c2430;
+  --brand-800: #2f3b4c;
+  --brand-700: #3a485c;
+  --brand-600: #45556b;
+  --brand-500: #56677f;
+  --brand-400: #7b8aa0;
+  --brand-200: #c9d1dc;
+  --brand-100: #e4e8ee;
+  --brand-50: #f3f5f8;
+  --banner-1: #364359;
+  --banner-2: #55657d;
+  --banner-strip: rgba(12, 17, 27, 0.28);
+  --live-bg: #dfe9f3;
+  --live-ink: #26364c;
+  --canvas: #f5f6f8;
+  --canvas-2: #eceff3;
+  --line: #e1e4ea;
+  --line-2: #d1d6de;
+  --ink: #141a22;
+  --ink-2: #374151;
+  --muted: #687180;
+  --faint: #9aa1ad;
+}
+
+[data-theme="amber"] {
+  --sb-1: #5b3412;
+  --sb-2: #43250b;
+  --sb-muted: #e6c8a4;
+  --sb-accent: #f7bb66;
+  --brand-950: #3d1f06;
+  --brand-800: #7a3d0b;
+  --brand-700: #8f4a0c;
+  --brand-600: #a5550d;
+  --brand-500: #c26914;
+  --brand-400: #dc8c3c;
+  --brand-200: #f3d3ad;
+  --brand-100: #faead6;
+  --brand-50: #fdf6ec;
+  --banner-1: #874812;
+  --banner-2: #b6681e;
+  --banner-strip: rgba(48, 22, 3, 0.28);
+  --live-bg: #ffeacb;
+  --live-ink: #7a3d0b;
+  --canvas: #f8f6f3;
+  --canvas-2: #f1ede7;
+  --line: #ebe4da;
+  --line-2: #ddd2c4;
+  --ink: #22180e;
+  --ink-2: #4a3b2c;
+  --muted: #7b6d5f;
+  --faint: #a89a8b;
+}
+
+[data-theme="forest-green"] {
+  --sb-1: #18402e;
+  --sb-2: #0f2e20;
+  --sb-muted: #abcdb9;
+  --sb-accent: #7fd6a0;
+  --brand-950: #0d2a1c;
+  --brand-800: #1b5136;
+  --brand-700: #215f40;
+  --brand-600: #286e4a;
+  --brand-500: #33825a;
+  --brand-400: #5ea37d;
+  --brand-200: #bddcc9;
+  --brand-100: #dff0e5;
+  --brand-50: #f0f8f3;
+  --banner-1: #225d3f;
+  --banner-2: #3a8459;
+  --banner-strip: rgba(7, 34, 20, 0.3);
+  --live-bg: #d6f4e0;
+  --live-ink: #165434;
+  --canvas: #f5f7f5;
+  --canvas-2: #edf2ee;
+  --line: #e0e8e2;
+  --line-2: #d0dbd3;
+  --ink: #112018;
+  --ink-2: #33463a;
+  --muted: #66776b;
+  --faint: #95a399;
+}
+
+[data-theme="professional-purple"] {
+  --sb-1: #34255f;
+  --sb-2: #241848;
+  --sb-muted: #c7bce8;
+  --sb-accent: #b8a3f7;
+  --brand-950: #21134a;
+  --brand-800: #3f2a85;
+  --brand-700: #4a329b;
+  --brand-600: #563bb3;
+  --brand-500: #6a4fcb;
+  --brand-400: #8c78dc;
+  --brand-200: #d3caf2;
+  --brand-100: #ebe6fa;
+  --brand-50: #f6f3fd;
+  --banner-1: #43307e;
+  --banner-2: #6a51b5;
+  --banner-strip: rgba(24, 13, 56, 0.3);
+  --live-bg: #e8e0fd;
+  --live-ink: #3f2a85;
+  --canvas: #f6f6f9;
+  --canvas-2: #eeedf4;
+  --line: #e4e2ed;
+  --line-2: #d5d2e2;
+  --ink: #1a1630;
+  --ink-2: #3d3856;
+  --muted: #6f6a86;
+  --faint: #9f9bb3;
+}
+
+:root {
+  /* Semantic KPI accents stay constant across themes so each financial
+     measure keeps one recognisable colour (approved design). */
+  --kpi-blue: #3f6fd1;
+  --kpi-green: #2f9a68;
+  --kpi-orange: #dd8a2e;
+  --kpi-red: #d0564d;
+  --kpi-purple: #7d5fd3;
+  --kpi-teal: #1f9b8f;
+
+  --ok: #2b8f60;
+  --ok-bg: #e3f5ec;
+  --warn: #b7791a;
+  --warn-bg: #fdf1dc;
+  --danger: #c4473e;
+  --danger-bg: #fbe7e5;
+  --info: #3a68c6;
+  --info-bg: #e6eefb;
+
+  --surface: #ffffff;
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--brand-500) 32%, transparent);
+
+  --shadow-1: 0 1px 2px rgba(16, 32, 31, 0.04), 0 6px 18px rgba(16, 32, 31, 0.05);
+  --shadow-2: 0 2px 6px rgba(16, 32, 31, 0.06), 0 16px 36px rgba(16, 32, 31, 0.1);
+  --shadow-pop: 0 18px 50px rgba(10, 24, 23, 0.2), 0 2px 8px rgba(10, 24, 23, 0.08);
+
+  --r-xs: 8px;
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 18px;
+  --r-xl: 24px;
+  --r-shell: 30px;
+
+  --sb-w-open: 264px;
+  --sb-w-closed: 84px;
+  --topbar-h: 88px;
+
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --font: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}

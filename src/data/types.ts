@@ -1,0 +1,90 @@
+export type Currency = "NGN" | "GHS";
+
+/**
+ * A monetary total grouped by its recorded currency.
+ * Values in different currencies are never added together.
+ */
+export type Money = Partial<Record<Currency, number>>;
+
+export type BranchStatus = "Active" | "Inactive";
+
+export interface Branch {
+  id: string;
+  name: string;
+  city: string;
+  country: string;
+  currency: Currency;
+  status: BranchStatus;
+  manager: string;
+  phone: string;
+  address: string;
+  /** Typical daily patient volume used by the demo generator. */
+  basePatients: number;
+  openedOn: string;
+}
+
+export type PaymentMethod = "Cash" | "POS" | "Transfer" | "HMO";
+export const PAYMENT_METHODS: PaymentMethod[] = ["Cash", "POS", "Transfer", "HMO"];
+
+export type ExpenseCategory =
+  | "Reagents & consumables"
+  | "Salaries"
+  | "Utilities"
+  | "Equipment maintenance"
+  | "Logistics"
+  | "Administrative";
+
+export const EXPENSE_CATEGORIES: ExpenseCategory[] = [
+  "Reagents & consumables",
+  "Salaries",
+  "Utilities",
+  "Equipment maintenance",
+  "Logistics",
+  "Administrative",
+];
+
+export interface AgingBuckets {
+  d0_30: number;
+  d31_60: number;
+  d61_90: number;
+  d90p: number;
+}
+
+/** One branch-day of demonstration activity. Amounts are in the branch currency. */
+export interface DayRecord {
+  date: string; // yyyy-mm-dd
+  patients: number;
+  newPatients: number;
+  referrals: number;
+  orders: number;
+  completedOrders: number;
+  transactions: number;
+  revenue: number;
+  payments: number;
+  expenses: number;
+  prCommission: number;
+  serviceCounts: number[];
+  paymentsByMethod: number[]; // aligned with PAYMENT_METHODS
+  expensesByCategory: number[]; // aligned with EXPENSE_CATEGORIES
+  /** End-of-day position of unpaid patient balances. */
+  outstanding: number;
+  outstandingUnpaid: number;
+  outstandingPartial: number;
+  openBills: number;
+  aging: AgingBuckets;
+}
+
+export type PeriodKey = "today" | "yesterday" | "week" | "month" | "year" | "custom";
+
+export interface PeriodSelection {
+  key: PeriodKey;
+  /** Only for custom ranges (yyyy-mm-dd). */
+  from?: string;
+  to?: string;
+}
+
+export interface DateRange {
+  from: Date;
+  to: Date;
+  days: number;
+}
