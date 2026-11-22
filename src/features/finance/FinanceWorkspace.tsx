@@ -42,10 +42,20 @@ const METHOD_HINT: Record<string, string> = {
   Cash: "Paid in cash at the front desk.",
   POS: "Paid by card on the POS terminal.",
   Transfer: "Paid by bank transfer.",
-  HMO: "Covered by a health insurance (HMO) plan.",
 };
 
-export function FinanceWorkspace({ branchId, initialLog = "all", focusOutstanding = false }: { branchId: string; initialLog?: LogType; focusOutstanding?: boolean }) {
+export function FinanceWorkspace({
+  branchId,
+  initialLog = "all",
+  focusOutstanding = false,
+  initialDay = null,
+}: {
+  branchId: string;
+  initialLog?: LogType;
+  focusOutstanding?: boolean;
+  /** "yyyy-mm-dd": open the analysis on this day (notification links). */
+  initialDay?: string | null;
+}) {
   const branch = getBranch(branchId);
   const c = branch?.currency ?? "NGN";
   const money = (n: number, compact = false) => formatMoney(n, c, compact);
@@ -55,12 +65,20 @@ export function FinanceWorkspace({ branchId, initialLog = "all", focusOutstandin
   const [viewing, setViewing] = useState<PatientVisit | null>(null);
   const [expense, setExpense] = useState<LedgerEntry | null>(null);
   const outRef = useRef<HTMLElement>(null);
+  const dayRef = useRef<HTMLElement>(null);
   // Rebuild figures when a commission rate changes.
   const { version } = useCommission();
+  // Seed the analysis period from a deep link (e.g. a daily-summary notification) once.
+  const [seeded, setSeeded] = useState(false);
+  if (!seeded) {
+    setSeeded(true);
+    if (initialDay && /^\d{4}-\d{2}-\d{2}$/.test(initialDay)) f.setPeriod({ key: "custom", from: initialDay, to: initialDay });
+  }
 
   useEffect(() => {
     if (focusOutstanding) outRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [focusOutstanding]);
+    else if (initialDay) dayRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [focusOutstanding, initialDay]);
 
   // Fixed position cards (independent of the analysis filter).
   const position = useMemo(
@@ -147,7 +165,7 @@ export function FinanceWorkspace({ branchId, initialLog = "all", focusOutstandin
       </section>
 
       {/* 2 ── Analysis */}
-      <section className="inv-section">
+      <section className="inv-section" ref={dayRef}>
         <header className="inv-section-head">
           <h3>Analysis · {label}</h3>
           <span>{rangeText(f.range)} · filter applies to the charts, the finance log and outstanding balances</span>
@@ -760,9 +778,10 @@ function OutstandingTable({ balances, money, onOpen }: { balances: ReturnType<ty
                 <tr key={b.visit.id} className="pr-row" tabIndex={0} onClick={() => onOpen(b.visit)} onKeyDown={(k) => (k.key === "Enter" || k.key === " ") && (k.preventDefault(), onOpen(b.visit))} aria-label={`Open visit record for ${b.visit.patientRef}`}>
                   <td>
                     <span className="ep-patient">
-                      <strong>{b.visit.patientRef}</strong>
+                      <strong>{b.visit.patientName}</strong>
                       <Badge tone={b.repaid > 0 ? "warn" : "danger"}>{b.repaid > 0 ? "Paying" : b.visit.payment}</Badge>
                     </span>
+                    <small className="ep-sub mono">{b.visit.patientRef}</small>
                   </td>
                   <td className="num ep-nowrap">
                     {formatShortDate(b.visit.at)} {b.visit.at.getFullYear()}

@@ -1158,3 +1158,76 @@
 .aging > div.is-dim {
   opacity: 0.35;
 }
+
+/* ─────────────── Field errors (app-wide) — shown on the field itself ─────────────── */
+.field-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 2px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--danger);
+  background: var(--danger-bg);
+  border: 1px solid color-mix(in srgb, var(--danger) 25%, transparent);
+  animation: field-error-in 0.22s var(--ease);
+}
+.field-error svg {
+  flex: none;
+  margin-top: 2px;
+}
+@keyframes field-error-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .field-error {
+    animation: none;
+  }
+}
+
+/* Red outline on the invalid control, wherever it is */
+.is-error > input,
+.is-error > textarea,
+.is-error .bl-input,
+.is-error .select-btn,
+.is-error .fd-static,
+.is-error .fd-select,
+.is-error > .bl-switch,
+.is-error .bl-option,
+.is-error .bl-refid,
+.fd-field.is-error > input,
+.fd-field.is-error > textarea,
+.fd-field.is-error .select-btn,
+.fd-field.is-error .fd-select-btn {
+  border-color: var(--danger) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 16%, transparent) !important;
+}
+.is-error .bl-label,
+.fd-field.is-error .fd-label {
+  color: var(--danger);
+}
+/* Panels that hold a list (e.g. selected services) */
+.bl-selected.is-error {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 14%, transparent);
+}
+.bl-detail.is-error,
+.bl-sec.is-error .bl-options {
+  border-radius: 16px;
+}
+.bl-detail.is-error {
+  border-color: var(--danger);
+}
+.bl-lines li.is-error {
+  border-color: var(--danger);
+}

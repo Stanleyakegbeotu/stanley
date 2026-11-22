@@ -1,0 +1,344 @@
+/* ─────────────── Notifications (bell drop-down, details, centre) ─────────────── */
+
+/* Drop-down: fixed head and foot, short list in between — no endless scrolling. */
+.popover.nt-pop {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: min(600px, calc(100vh - 32px));
+}
+
+.nt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 12px;
+  background: linear-gradient(135deg, var(--band-wash, var(--brand-50)), transparent 80%);
+  border-bottom: 1px solid var(--line);
+}
+.nt-head strong {
+  display: block;
+  font-size: 16px;
+  color: var(--ink);
+}
+.nt-head small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.nt-head .text-link,
+.nt-card-head .text-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.nt-head .text-link:disabled,
+.nt-card-head .text-link:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.nt-tabs {
+  padding: 10px 16px 6px;
+}
+
+.nt-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 8px 6px;
+}
+
+.nt-row {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: background 0.15s var(--ease);
+}
+.nt-row + .nt-row {
+  margin-top: 2px;
+}
+.nt-row:hover {
+  background: var(--canvas-2);
+}
+.nt-row:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.nt-row.is-unread {
+  background: color-mix(in srgb, var(--brand-50) 75%, transparent);
+}
+.nt-row.is-unread:hover {
+  background: var(--brand-50);
+}
+.nt-icon {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  background: var(--brand-50);
+  color: var(--brand-700);
+  border: 1px solid color-mix(in srgb, var(--brand-200) 70%, transparent);
+}
+.nt-row.is-unread .nt-icon {
+  background: var(--brand-600);
+  border-color: var(--brand-600);
+  color: #fff;
+}
+.nt-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.nt-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.nt-title b {
+  font-size: 13.5px;
+  font-weight: 560;
+  line-height: 1.35;
+}
+.nt-row.is-unread .nt-title b {
+  font-weight: 700;
+}
+.nt-title time {
+  flex: none;
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.nt-text > small {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+.nt-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.nt-meta em {
+  font-style: normal;
+  font-weight: 650;
+  color: var(--brand-700);
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--brand-50);
+  border: 1px solid var(--brand-200);
+}
+.nt-dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--brand-600);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-500) 20%, transparent);
+}
+
+.nt-empty {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 28px 16px;
+  text-align: center;
+  color: var(--muted);
+}
+.nt-empty svg {
+  color: var(--brand-600);
+}
+.nt-empty strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+.nt-empty small {
+  font-size: 12.5px;
+}
+
+.nt-more {
+  margin: 0;
+  padding: 6px 16px 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.nt-foot {
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--line);
+}
+.nt-all {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 40px;
+  border: 1px solid var(--brand-200);
+  border-radius: 11px;
+  background: var(--brand-50);
+  color: var(--brand-800);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+.nt-all:hover {
+  background: var(--brand-100);
+  border-color: var(--brand-400);
+}
+.nt-all:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Details pop-up */
+.nt-detail {
+  display: grid;
+  gap: 14px;
+}
+.nt-detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.nt-detail-sum {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--ink);
+  font-weight: 520;
+}
+.nt-detail-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--canvas-2);
+  border: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.nt-detail-note svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--brand-600);
+}
+.nt-target {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px dashed var(--brand-400);
+  background: color-mix(in srgb, var(--brand-50) 70%, transparent);
+  color: var(--brand-700);
+}
+.nt-target span {
+  display: grid;
+  gap: 1px;
+}
+.nt-target small {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.nt-target b {
+  font-size: 13.5px;
+  color: var(--ink);
+}
+.nt-detail-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  flex-wrap: wrap;
+}
+.nt-detail-foot > span {
+  display: flex;
+  gap: 10px;
+  margin-left: auto;
+}
+.nt-detail-foot .text-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Notification centre */
+.nt-centre {
+  display: grid;
+  gap: 14px;
+}
+.nt-toolbar {
+  flex-wrap: wrap;
+}
+.nt-card {
+  padding: 0;
+  overflow: hidden;
+}
+.nt-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.nt-groups {
+  padding: 4px 10px 8px;
+}
+.nt-group h4 {
+  position: sticky;
+  top: 0;
+  margin: 10px 0 4px;
+  padding: 4px 4px;
+  font-size: 11.5px;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--brand-700);
+}
+.nt-group + .nt-group {
+  border-top: 1px solid var(--line);
+}
+
+@media (max-width: 640px) {
+  .popover.nt-pop {
+    width: calc(100vw - 24px) !important;
+  }
+  .nt-detail-foot > span {
+    width: 100%;
+  }
+  .nt-detail-foot > span > * {
+    flex: 1;
+  }
+}

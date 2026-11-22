@@ -4424,3 +4424,420 @@
 .al-table td:last-child {
   padding-right: 18px;
 }
+
+/* ─────────────── Page banner art: the page's sidebar icon, gently alive ─────────────── */
+.ph-art {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  align-self: stretch;
+  min-height: 96px;
+  margin: -30px 0;
+  pointer-events: none;
+  container-type: inline-size;
+}
+
+.ph-art-stage {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 156px;
+  height: 156px;
+  transform: translate(-50%, -50%);
+}
+
+/* No buttons on the right: sit nearer the right edge to fill the empty side. */
+.ph-hero:not(.has-actions) .ph-art-stage {
+  left: auto;
+  right: 7%;
+  transform: translateY(-50%);
+}
+
+@container (max-width: 170px) {
+  .ph-art-stage {
+    display: none;
+  }
+}
+
+.ph-art-glow {
+  position: absolute;
+  inset: 18px;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--sb-accent) 55%, transparent) 0%, transparent 68%);
+  filter: blur(6px);
+  animation: ph-pulse 5.5s ease-in-out infinite;
+}
+
+.ph-art-ring {
+  position: absolute;
+  border-radius: 50%;
+}
+
+.ph-art-ring.is-outer {
+  inset: 0;
+  border: 1.5px dashed rgba(255, 255, 255, 0.3);
+  animation: ph-spin 28s linear infinite;
+}
+
+.ph-art-ring.is-inner {
+  inset: 22px;
+  border: 1.5px dotted rgba(255, 255, 255, 0.26);
+  animation: ph-spin 18s linear infinite reverse;
+}
+
+/* Small orbiting dots ride on the rings. */
+.ph-art-ring i {
+  position: absolute;
+  top: -5px;
+  left: 50%;
+  width: 9px;
+  height: 9px;
+  margin-left: -4.5px;
+  border-radius: 50%;
+  background: var(--sb-accent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--sb-accent) 80%, transparent);
+}
+
+.ph-art-ring.is-inner i {
+  top: auto;
+  bottom: -4px;
+  width: 7px;
+  height: 7px;
+  margin-left: -3.5px;
+  background: #fff;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.7);
+}
+
+.ph-art-tile {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 78px;
+  height: 78px;
+  margin: -39px 0 0 -39px;
+  border-radius: 24px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0.08));
+  border: 1px solid rgba(255, 255, 255, 0.38);
+  box-shadow:
+    0 14px 30px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(6px);
+  animation: ph-float 6s ease-in-out infinite;
+}
+
+.ph-art-tile svg {
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.18));
+}
+
+@keyframes ph-float {
+  0%,
+  100% {
+    transform: translateY(3px) rotate(-3deg);
+  }
+  50% {
+    transform: translateY(-7px) rotate(3deg);
+  }
+}
+
+@keyframes ph-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes ph-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.06);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ph-art-glow,
+  .ph-art-ring,
+  .ph-art-tile {
+    animation: none;
+  }
+}
+
+@media (max-width: 1000px) {
+  .ph-art {
+    display: none;
+  }
+}
+
+/* Owner: the banner icon sits at the RIGHT EDGE on every page. A strip on the
+   right is reserved for it, so titles and buttons never run underneath. */
+.ph-hero.has-art {
+  padding-right: 232px;
+}
+
+.ph-hero .ph-art {
+  position: absolute;
+  top: 0;
+  right: 30px;
+  bottom: 0;
+  width: 176px;
+  flex: none;
+  min-height: 0;
+  margin: 0;
+}
+
+.ph-hero .ph-art-stage,
+.ph-hero:not(.has-actions) .ph-art-stage {
+  top: 50%;
+  left: 50%;
+  right: auto;
+  transform: translate(-50%, -50%);
+}
+
+@media (max-width: 1000px) {
+  .ph-hero.has-art {
+    padding-right: 32px;
+  }
+}
+
+/* ═══════════════ Page banner v2 — dashboard proportions ═══════════════
+   One row (title left, period + main button right, icon at the right edge)
+   and the live ticker strip along the bottom. Never taller than the
+   dashboard banner. Overrides the earlier .ph-hero rules. */
+.ph-hero,
+.ph-hero.has-art {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
+}
+
+.ph-main {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 22px;
+  min-height: 104px;
+  padding: 22px 28px 20px;
+}
+
+.ph-hero.has-art .ph-main {
+  padding-right: 206px;
+}
+
+.ph-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.ph-eyebrow {
+  font-size: 11.5px;
+}
+
+.ph-copy h1 {
+  margin-top: 6px;
+  font-size: clamp(22px, 1.9vw, 28px);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ph-actions {
+  flex: none;
+  flex-wrap: nowrap;
+  gap: 10px;
+}
+
+.ph-btn {
+  height: 42px;
+  padding: 0 16px;
+  border-radius: 12px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+/* Compact period dropdown (replaces the row of period pills) */
+.ph-period {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  height: 42px;
+  padding: 0 12px 0 13px;
+  border-radius: 12px;
+  font: inherit;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.ph-period:hover,
+.ph-period[aria-expanded="true"] {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.ph-period-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.15;
+  text-align: left;
+}
+
+.ph-period-text b {
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.ph-period-text small {
+  font-size: 11px;
+  opacity: 0.82;
+  white-space: nowrap;
+}
+
+/* Icon at the right edge, sized to the one-row banner */
+.ph-hero .ph-art {
+  position: absolute;
+  top: 0;
+  right: 22px;
+  bottom: 0;
+  width: 160px;
+  margin: 0;
+  overflow: hidden;
+}
+
+.ph-hero .ph-art-stage,
+.ph-hero:not(.has-actions) .ph-art-stage {
+  width: 118px;
+  height: 118px;
+}
+
+.ph-hero .ph-art-glow {
+  inset: 14px;
+}
+
+.ph-hero .ph-art-ring.is-inner {
+  inset: 17px;
+}
+
+.ph-hero .ph-art-tile {
+  width: 62px;
+  height: 62px;
+  margin: -31px 0 0 -31px;
+  border-radius: 19px;
+}
+
+/* The strip spans the full banner width, flush with its bottom edge. */
+.ph-hero .hero-strip {
+  position: relative;
+  z-index: 1;
+}
+
+@media (max-width: 1000px) {
+  .ph-main,
+  .ph-hero.has-art .ph-main {
+    flex-wrap: wrap;
+    padding-right: 28px;
+  }
+  .ph-copy h1 {
+    white-space: normal;
+  }
+}
+
+/* The icon area is a fixed 160px strip — never hide its stage by width. */
+.ph-hero .ph-art {
+  container-type: normal;
+}
+
+.ph-hero .ph-art .ph-art-stage {
+  display: block;
+}
+
+/* ── Banner actions: one glass toolbar pinned right, next to the icon ── */
+.ph-hero.has-art .ph-main {
+  padding-right: 168px;
+}
+
+.ph-hero .ph-art {
+  right: 14px;
+  width: 146px;
+}
+
+.ph-actions {
+  align-self: center;
+  margin-left: auto;
+  padding: 5px;
+  gap: 4px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.09);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(6px);
+}
+
+/* Inside the toolbar the period control is flat; a hairline separates it from the button. */
+.ph-actions .ph-period {
+  height: 40px;
+  background: transparent;
+  border-color: transparent;
+}
+
+.ph-actions .ph-period:hover,
+.ph-actions .ph-period[aria-expanded="true"] {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.ph-actions .ph-period + * {
+  position: relative;
+  margin-left: 9px;
+}
+
+.ph-actions .ph-period + *::before {
+  content: "";
+  position: absolute;
+  left: -7px;
+  top: 8px;
+  bottom: 8px;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.ph-actions .ph-btn {
+  height: 40px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.14);
+}
+
+.ph-actions .ph-btn.solid:hover {
+  transform: none;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+/* Owner: the banner icon floats on its own, like the sidebar icons — no box around it. */
+.ph-hero .ph-art-tile {
+  width: 56px;
+  height: 56px;
+  margin: -28px 0 0 -28px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.ph-hero .ph-art-tile svg {
+  width: 46px;
+  height: 46px;
+  stroke-width: 1.6;
+  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.22));
+}

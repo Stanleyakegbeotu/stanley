@@ -25,8 +25,9 @@ export interface Branch {
   openedOn: string;
 }
 
-export type PaymentMethod = "Cash" | "POS" | "Transfer" | "HMO";
-export const PAYMENT_METHODS: PaymentMethod[] = ["Cash", "POS", "Transfer", "HMO"];
+/** Owner (2026-11-21): no insurance (HMO) scheme is run — patients pay by cash, POS or transfer. */
+export type PaymentMethod = "Cash" | "POS" | "Transfer";
+export const PAYMENT_METHODS: PaymentMethod[] = ["Cash", "POS", "Transfer"];
 
 export type ExpenseCategory =
   | "Reagents & consumables"

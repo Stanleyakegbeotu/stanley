@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { passesNavigationGuard } from "./navGuard";
 
 export interface Route {
   /** Path without query, e.g. "/dashboard" or "/branch/wuse-ii/billing". */
@@ -28,7 +29,9 @@ export function useHashRoute() {
   }, []);
 
   const navigate = useCallback((to: string) => {
-    if (`#${to}` !== window.location.hash) window.location.hash = to;
+    if (`#${to}` === window.location.hash) return;
+    if (!passesNavigationGuard(to)) return;
+    window.location.hash = to;
   }, []);
 
   return { route, navigate };

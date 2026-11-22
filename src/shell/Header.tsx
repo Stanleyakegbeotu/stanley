@@ -1,12 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowLeft,
-  Bell,
   Building2,
   CalendarDays,
-  Check,
-  CheckCheck,
-  ChevronDown,
   CircleUserRound,
   FileText,
   Handshake,
@@ -19,78 +14,37 @@ import {
   Settings,
   UserRound,
   Users,
-  Wallet,
 } from "lucide-react";
 import { useApp } from "@/app/AppState";
 import { branchRoute } from "@/app/router";
-import { ACTIVE_BRANCHES, BRANCHES, getBranch } from "@/data/company";
-import { DRAFTS, PATIENTS, STAFF, TRANSACTIONS, type NotificationItem } from "@/data/demo/records";
-import { formatMoney, formatRelative, formatTime, initials } from "@/shared/format";
+import { BRANCHES, BRANCH_MANAGER_PLACEHOLDER, NOT_ON_RECORD, getBranch } from "@/data/company";
+import { isManager } from "@/data/userRecords";
+import { Badge } from "@/shared/ui/controls";
+import { UserAvatar } from "./BrandLogo";
+import { DRAFTS, PATIENTS, STAFF, TRANSACTIONS } from "@/data/demo/records";
+import { formatMoney, formatTime, initials } from "@/shared/format";
 import { CATALOGUE_INVENTORY } from "@/data/catalogueRules";
 import { LEGACY_BRANCH_ID, LEGACY_HOSPITAL_DIRECTORY, hasPhone, hospitalKey, phoneDigits, searchText } from "@/data/legacy";
 import { Popover } from "@/shared/ui/Popover";
-import { Segmented } from "@/shared/ui/controls";
+import { NotificationsButton } from "@/features/notifications/Notifications";
+import { PriceCalculatorButton } from "@/features/quote/PriceCalculator";
+import { PatientSearch } from "./PatientSearch";
 import { useNetworkStatus } from "@/shared/useNetworkStatus";
+import { syncQueue, useBilling } from "@/services/billing";
 
 export function Header() {
   const { route } = useApp();
   const br = branchRoute(route);
   return (
     <header className="topbar">
-      {br && <BranchContextControl branchId={br.branchId} />}
-      <GlobalSearch scopeBranchId={br?.branchId} />
-      <DateTime />
+      {br ? <PatientSearch branchId={br.branchId} /> : <GlobalSearch />}
+      <DateTime compact={!!br} />
+      {br && <PriceCalculatorButton branchId={br.branchId} />}
       <NetworkButton />
       <NotificationsButton />
       <span className="hdr-divider" aria-hidden="true" />
       <ProfileMenu />
     </header>
-  );
-}
-
-/* ─────────────── Branch workspace context ─────────────── */
-function BranchContextControl({ branchId }: { branchId: string }) {
-  const { navigate, route } = useApp();
-  const branch = getBranch(branchId);
-  const ref = useRef<HTMLButtonElement>(null);
-  const [open, setOpen] = useState(false);
-  const page = branchRoute(route)?.page ?? "dashboard";
-  return (
-    <div className="hdr-control hdr-branch-pill">
-      <button className="back" onClick={() => navigate("/dashboard")} aria-label="Back to Company Dashboard" title="Back to Company Dashboard">
-        <ArrowLeft size={17} />
-      </button>
-      <button ref={ref} className="ctx-select" style={{ border: 0, boxShadow: "none", padding: 0, minWidth: 0 }} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-        <span className="ctx-select-text">
-          <small>Branch workspace</small>
-          <strong>{branch ? `${branch.name} Branch` : "Unknown branch"}</strong>
-        </span>
-        <ChevronDown size={17} style={{ color: "var(--brand-700)" }} />
-      </button>
-      <Popover anchor={ref} open={open} onClose={() => setOpen(false)} width={300} role="listbox" label="Switch branch">
-        <div className="menu-label">Switch branch</div>
-        {ACTIVE_BRANCHES.map((b) => (
-          <button
-            key={b.id}
-            className={`menu-item ${b.id === branchId ? "is-selected" : ""}`}
-            role="option"
-            aria-selected={b.id === branchId}
-            onClick={() => {
-              setOpen(false);
-              navigate(`/branch/${b.id}/${page}`);
-            }}
-          >
-            <span className="mi-text">
-              {b.name}
-              <small>
-                {b.city} · {b.currency}
-              </small>
-            </span>
-            {b.id === branchId && <Check size={16} className="mi-check" />}
-          </button>
-        ))}
-      </Popover>
-    </div>
   );
 }
 
@@ -228,12 +182,29 @@ function GlobalSearch({ scopeBranchId }: { scopeBranchId?: string }) {
 }
 
 /* ─────────────── Date & time ─────────────── */
-function DateTime() {
+/** `compact` (branch workspace): abbreviated "SAT, 21 NOV 26" to leave room for the price calculator. */
+function DateTime({ compact = false }: { compact?: boolean }) {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const t = window.setInterval(() => setNow(new Date()), 15_000);
     return () => window.clearInterval(t);
   }, []);
+  if (compact) {
+    const part = (o: Intl.DateTimeFormatOptions) => now.toLocaleDateString("en-GB", o).toUpperCase();
+    return (
+      <div className="hdr-control hdr-datetime is-compact" role="group" aria-label={`${now.toLocaleDateString("en-GB", { dateStyle: "full" })}, ${formatTime(now)}`}>
+        <span className="dt-date" aria-hidden="true">
+          <CalendarDays size={18} />
+          <span>
+            {part({ weekday: "short" })}, {now.getDate()} {part({ month: "short" }).slice(0, 3)} {String(now.getFullYear()).slice(2)}
+          </span>
+        </span>
+        <time className="hdr-time" dateTime={now.toISOString()} aria-hidden="true">
+          {formatTime(now)}
+        </time>
+      </div>
+    );
+  }
   const weekday = now.toLocaleDateString("en-GB", { weekday: "long" });
   const weekdayShort = now.toLocaleDateString("en-GB", { weekday: "short" });
   const day = now.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
@@ -257,13 +228,6 @@ function DateTime() {
 }
 
 /* ─────────────── Notifications ─────────────── */
-const NOTE_ICON: Record<NotificationItem["kind"], typeof Bell> = {
-  price: ReceiptText,
-  approval: Wallet,
-  staff: Users,
-  inventory: Package,
-  system: Settings,
-};
 
 /* ─────────────── Network status (offline-first) ─────────────── */
 
@@ -294,6 +258,8 @@ function NetworkButton() {
   );
   const net = useNetworkStatus(announce);
   const label = net.online ? "Online" : "Offline";
+  // Bills saved on this device, waiting (in order) to sync to the cloud.
+  const queued = syncQueue(useBilling()).length;
   const speed = [net.effectiveType ? net.effectiveType.toUpperCase() : null, net.downlink ? `~${net.downlink} Mbps` : null, net.rtt ? `${net.rtt} ms latency` : null].filter(Boolean).join(" · ");
 
   return (
@@ -309,6 +275,11 @@ function NetworkButton() {
       >
         <SignalBars online={net.online} />
         <span className="net-dot" aria-hidden="true" />
+        {queued > 0 && (
+          <span className="net-queue" title={`${queued} waiting to sync`}>
+            {queued > 99 ? "99+" : queued}
+          </span>
+        )}
       </button>
       <Popover anchor={ref} open={open} onClose={() => setOpen(false)} placement="bottom-end" width={340} label="Network status">
         <div className={`net-panel ${net.online ? "is-online" : "is-offline"}`}>
@@ -329,123 +300,105 @@ function NetworkButton() {
               ? "Connected to the internet. STANLEY is offline-first, so it keeps working the same way if the connection drops."
               : "No internet connection. STANLEY is offline-first — you can keep working on this device and nothing is blocked."}
           </p>
-          <p className="net-note">Local storage and cloud sync are not connected yet — changes made now last for this session until the database is set up.</p>
-        </div>
-      </Popover>
-    </>
-  );
-}
-
-function NotificationsButton() {
-  const { notifications, markRead, markAllRead, navigate } = useApp();
-  const ref = useRef<HTMLButtonElement>(null);
-  const [open, setOpen] = useState(false);
-  const [filter, setFilter] = useState<"all" | "unread">("all");
-  const unread = notifications.filter((n) => !n.read).length;
-  const list = filter === "unread" ? notifications.filter((n) => !n.read) : notifications;
-
-  return (
-    <>
-      <button
-        ref={ref}
-        className="hdr-control hdr-icon-btn"
-        aria-label={`Notifications, ${unread} unread`}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-      >
-        <Bell size={21} />
-        {unread > 0 && <span className="hdr-badge">{unread}</span>}
-      </button>
-      <Popover anchor={ref} open={open} onClose={() => setOpen(false)} placement="bottom-end" width={420} label="Notifications">
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px 10px" }}>
-          <div>
-            <strong style={{ fontSize: 16 }}>Notifications</strong>
-            <div className="hint">{unread ? `${unread} unread administrative updates` : "You're all caught up"}</div>
+          <div className={`net-sync ${queued ? "has-queue" : ""}`}>
+            <b>{queued ? `${queued} bill${queued === 1 ? "" : "s"} waiting to sync` : "Nothing waiting to sync"}</b>
+            <small>{queued ? "Saved safely on this device and queued in order. They upload to the cloud database automatically once it is connected and you are online." : "Bills are saved on this device first, then queued for the cloud — so billing never stops when the internet drops."}</small>
           </div>
-          <button className="text-link" onClick={markAllRead} disabled={!unread}>
-            <CheckCheck size={16} /> Mark all read
-          </button>
+          <p className="net-note">The cloud database is not connected in this version, so queued bills stay on this device (for this session) until it is set up.</p>
         </div>
-        <div style={{ padding: "0 10px 8px" }}>
-          <Segmented label="Notification filter" value={filter} onChange={setFilter} options={[{ value: "all", label: "All" }, { value: "unread", label: `Unread (${unread})` }]} />
-        </div>
-        {list.length === 0 && <div className="empty">No unread notifications.</div>}
-        {list.map((n) => {
-          const Icon = NOTE_ICON[n.kind];
-          return (
-            <button
-              key={n.id}
-              className="menu-item"
-              style={{ alignItems: "flex-start", background: n.read ? undefined : "color-mix(in srgb, var(--brand-50) 70%, transparent)" }}
-              onClick={() => {
-                markRead(n.id);
-                setOpen(false);
-                navigate(n.route);
-              }}
-            >
-              <span className="mi-icon">
-                <Icon size={16} />
-              </span>
-              <span className="mi-text">
-                <span style={{ display: "flex", justifyContent: "space-between", gap: 8, fontWeight: n.read ? 500 : 650 }}>
-                  {n.title}
-                  <small style={{ whiteSpace: "nowrap" }}>{formatRelative(n.at)}</small>
-                </span>
-                <small>{n.body}</small>
-              </span>
-              {!n.read && <span aria-label="Unread" style={{ width: 8, height: 8, marginTop: 8, borderRadius: 8, background: "var(--brand-500)", flex: "none" }} />}
-            </button>
-          );
-        })}
       </Popover>
     </>
   );
 }
+
 
 /* ─────────────── Profile ─────────────── */
+/**
+ * Every link here stays in the current workspace: inside a branch it opens the
+ * branch's settings (manager: branch + own account; staff: own account only),
+ * on admin pages the company settings.
+ */
 function ProfileMenu() {
-  const { user, navigate, setSignOutOpen } = useApp();
+  const { user, navigate, setSignOutOpen, route, staff, switchAccount, showToast } = useApp();
+  const br = branchRoute(route);
   const ref = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
+  const base = br ? `/branch/${br.branchId}/settings` : "/settings";
   const go = (to: string) => {
     setOpen(false);
     navigate(to);
   };
+  const settingsLabel = user.kind === "admin" ? "Company settings" : user.kind === "manager" ? "Branch settings" : "Account settings";
+  // Demo stand-in for sign-in: the branch's people (manager first).
+  const accounts = br ? staff.filter((s) => s.branchId === br.branchId && s.status !== "Left" && s.status !== "Suspended").sort((a, b) => Number(isManager(b)) - Number(isManager(a)) || a.name.localeCompare(b.name)) : [];
+  const hasManager = accounts.some(isManager);
   return (
     <>
-      <button ref={ref} className="hdr-avatar" aria-label={`Profile menu for ${user.name}`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-        {initials(user.name)}
+      <button ref={ref} className={`hdr-avatar ${user.photo ? "has-photo" : ""}`} aria-label={`Profile menu for ${user.name}`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        {user.photo ? <img src={user.photo} alt="" /> : initials(user.name)}
       </button>
-      <Popover anchor={ref} open={open} onClose={() => setOpen(false)} placement="bottom-end" width={280} role="menu" label="Profile">
+      <Popover anchor={ref} open={open} onClose={() => setOpen(false)} placement="bottom-end" width={300} role="menu" label="Profile">
         <div className="menu-item" style={{ cursor: "default" }}>
-          <span className="avatar lg">{initials(user.name)}</span>
+          <UserAvatar name={user.name} photo={user.photo} className="avatar lg" />
           <span className="mi-text">
             <strong>{user.name}</strong>
             <small>
-              {user.role} · {user.email}
+              {user.role}
+              {user.email && user.email !== NOT_ON_RECORD ? ` · ${user.email}` : ""}
             </small>
           </span>
         </div>
         <div className="menu-sep" />
-        <button className="menu-item" role="menuitem" onClick={() => go("/settings?section=profile")}>
+        <button className="menu-item" role="menuitem" onClick={() => go(`${base}?section=profile`)}>
           <span className="mi-icon">
             <CircleUserRound size={16} />
           </span>
           <span className="mi-text">My profile</span>
         </button>
-        <button className="menu-item" role="menuitem" onClick={() => go("/settings")}>
+        <button className="menu-item" role="menuitem" onClick={() => go(user.kind === "staff" ? `${base}?section=profile` : base)}>
           <span className="mi-icon">
             <Settings size={16} />
           </span>
-          <span className="mi-text">Account settings</span>
+          <span className="mi-text">{settingsLabel}</span>
         </button>
-        <button className="menu-item" role="menuitem" onClick={() => go("/settings?section=appearance")}>
+        <button className="menu-item" role="menuitem" onClick={() => go(`${base}?section=appearance`)}>
           <span className="mi-icon">
             <Palette size={16} />
           </span>
           <span className="mi-text">Appearance & theme</span>
         </button>
+        {br && (
+          <>
+            <div className="menu-sep" />
+            <div className="menu-label">Switch account · demo until sign-in is connected</div>
+            {!hasManager && (
+              <AccountItem
+                name={BRANCH_MANAGER_PLACEHOLDER.name}
+                role="Branch Manager (placeholder)"
+                current={user.kind === "manager" && !user.staffId}
+                onPick={() => {
+                  switchAccount(br.branchId, null);
+                  setOpen(false);
+                  showToast(`Working as ${BRANCH_MANAGER_PLACEHOLDER.name}`);
+                }}
+              />
+            )}
+            {accounts.map((s) => (
+              <AccountItem
+                key={s.id}
+                name={s.name}
+                role={s.role}
+                current={user.staffId === s.id}
+                onPick={() => {
+                  switchAccount(br.branchId, isManager(s) ? null : s.id);
+                  setOpen(false);
+                  showToast(`Working as ${s.name} · ${s.role}`);
+                }}
+              />
+            ))}
+            {accounts.filter((s) => !isManager(s)).length === 0 && <div className="hint" style={{ padding: "2px 12px 8px" }}>Add staff in Staff Management to try their accounts.</div>}
+          </>
+        )}
         <div className="menu-sep" />
         <button
           className="menu-item"
@@ -462,5 +415,20 @@ function ProfileMenu() {
         </button>
       </Popover>
     </>
+  );
+}
+
+function AccountItem({ name, role, current, onPick }: { name: string; role: string; current: boolean; onPick: () => void }) {
+  return (
+    <button className={`menu-item ${current ? "is-selected" : ""}`} role="menuitemradio" aria-checked={current} disabled={current} onClick={onPick}>
+      <span className="mi-icon">
+        <UserRound size={16} />
+      </span>
+      <span className="mi-text">
+        {name}
+        <small>{role}</small>
+      </span>
+      {current && <Badge tone="brand">Current</Badge>}
+    </button>
   );
 }

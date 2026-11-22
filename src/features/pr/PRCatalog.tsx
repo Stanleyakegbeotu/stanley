@@ -45,6 +45,8 @@ import { Badge, Button, EmptyState, SearchInput, Segmented, SelectMenu } from "@
 import { Modal } from "@/shared/ui/Modal";
 import { Pagination } from "@/shared/ui/Pagination";
 import { SearchSelect, type SearchOption } from "@/shared/ui/SearchSelect";
+import { FieldError, focusFirstError } from "@/shared/ui/FieldError";
+import { NAME_INPUT_PROPS, nameChange } from "@/shared/nameCase";
 import { SummaryChips } from "@/features/dashboard/ExpensesPatients";
 import { AddAgentDialog } from "@/features/shared/createForms";
 import { MoveToTrashDialog } from "@/features/admin/AdminLogs";
@@ -844,7 +846,7 @@ function ReferredPatients({ visits, onOpen }: { visits: PatientVisit[]; onOpen: 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const term = q.trim().toLowerCase();
-  const rows = visits.filter((v) => !term || `${v.patientRef} ${v.id} ${v.services.map((s) => s.name).join(" ")}`.toLowerCase().includes(term));
+  const rows = visits.filter((v) => !term || `${v.patientName} ${v.patientRef} ${v.id} ${v.services.map((s) => s.name).join(" ")}`.toLowerCase().includes(term));
   const pages = Math.max(1, Math.ceil(rows.length / pageSize));
   const safe = Math.min(page, pages);
   const visible = rows.slice((safe - 1) * pageSize, safe * pageSize);
@@ -890,10 +892,12 @@ function ReferredPatients({ visits, onOpen }: { visits: PatientVisit[]; onOpen: 
                   </td>
                   <td>
                     <span className="ep-patient">
-                      <strong>{v.patientRef}</strong>
+                      <strong>{v.patientName}</strong>
                       <Badge tone={v.isNew ? "brand" : "neutral"}>{v.isNew ? "New" : "Returning"}</Badge>
                     </span>
-                    <small className="ep-sub mono">{v.id}</small>
+                    <small className="ep-sub mono">
+                      {v.patientRef} · {v.id}
+                    </small>
                   </td>
                   <td>
                     {v.services[0]?.name ?? "—"}
@@ -943,9 +947,18 @@ function AgentEditForm({ agent, directory, transferred, recordedKey, onSaved }: 
 
   const anyBank = !!(bankName.trim() || accountNumber.trim() || accountName.trim());
   const bankComplete = !!(bankName.trim() && isNuban(accountNumber) && accountName.trim());
-  const bankError = anyBank && !bankComplete ? (!bankName.trim() ? "Choose the bank." : !isNuban(accountNumber) ? "The account number must be 10 digits." : "Enter the account name.") : null;
   const pctNum = Number(ownPct);
-  const rateError = useOwn && (!ownPct.trim() || !Number.isFinite(pctNum) || pctNum < 0 || pctNum > 50) ? "Enter a rate between 0% and 50%." : null;
+  // Field errors — shown on each field after a blocked Save (owner rule), then updated live.
+  const fieldErr = {
+    name: !name.trim() ? "Enter the agent's full name." : null,
+    bankName: anyBank && !bankComplete && !bankName.trim() ? "Choose the bank." : null,
+    accountNumber: anyBank && !bankComplete && !isNuban(accountNumber) ? "The account number must be 10 digits." : null,
+    accountName: anyBank && !bankComplete && !accountName.trim() ? "Enter the account name exactly as the bank shows it." : null,
+    rate: useOwn && (!ownPct.trim() || !Number.isFinite(pctNum) || pctNum < 0 || pctNum > 50) ? "Enter a rate between 0% and 50%." : null,
+  };
+  const [tried, setTried] = useState(false);
+  const show = (k: keyof typeof fieldErr) => (tried ? fieldErr[k] : null);
+  const fieldCls = (base: string, k: keyof typeof fieldErr) => ({ className: `${base} ${show(k) ? "is-error" : ""}`, "data-field-error": show(k) ? true : undefined });
 
   const detailsChanged = name.trim() !== agent.name || (phone.trim() || "N/A") !== agent.phone || hospital !== key;
   const bankChanged = bankName.trim() !== (agent.bank?.bankName ?? "") || accountNumber.trim() !== (agent.bank?.accountNumber ?? "") || accountName.trim() !== (agent.bank?.accountName ?? "");
@@ -959,11 +972,12 @@ function AgentEditForm({ agent, directory, transferred, recordedKey, onSaved }: 
           <span>Agent details</span>
         </h3>
         <div className="fd-grid">
-          <label className="fd-field full">
+          <label {...fieldCls("fd-field full", "name")}>
             <span className="fd-label">
               Full name <em aria-hidden="true">*</em>
             </span>
-            <input value={name} onChange={(e) => setName(e.target.value)} />
+            <input value={name} {...NAME_INPUT_PROPS} onChange={nameChange(setName)} />
+            <FieldError msg={show("name")} />
           </label>
           <label className="fd-field">
             <span className="fd-label">
@@ -1001,21 +1015,23 @@ function AgentEditForm({ agent, directory, transferred, recordedKey, onSaved }: 
           <span>Payment account</span>
         </h3>
         <div className="fd-grid">
-          <div className="fd-field full">
+          <div {...fieldCls("fd-field full", "bankName")}>
             <span className="fd-label">Bank</span>
             <SearchSelect value={bankName} options={bankOptions} ariaLabel="Bank" placeholder="Choose the bank" searchPlaceholder="Search banks or type another" allowCreate createLabel={(t) => `Use “${t}”`} onChange={setBankName} />
+            <FieldError msg={show("bankName")} />
           </div>
-          <label className="fd-field">
+          <label {...fieldCls("fd-field", "accountNumber")}>
             <span className="fd-label">Account number</span>
             <input value={accountNumber} onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, "").slice(0, 10))} placeholder="10 digits" inputMode="numeric" className="num" />
+            <FieldError msg={show("accountNumber")} />
           </label>
-          <label className="fd-field">
+          <label {...fieldCls("fd-field", "accountName")}>
             <span className="fd-label">Account name</span>
-            <input value={accountName} onChange={(e) => setAccountName(e.target.value)} placeholder="Name on the bank account" />
+            <input value={accountName} {...NAME_INPUT_PROPS} onChange={nameChange(setAccountName)} placeholder="Name on the bank account" />
+            <FieldError msg={show("accountName")} />
           </label>
         </div>
         <p className="fd-note">The account name can differ from the name the agent is listed under — enter it exactly as the bank shows it. Leave all three blank if the details are not known yet.</p>
-        {bankError && <p className="fd-note ap-error">{bankError}</p>}
       </section>
 
       <section className="fd-section">
@@ -1045,20 +1061,25 @@ function AgentEditForm({ agent, directory, transferred, recordedKey, onSaved }: 
                     </button>
                   ))}
                 </span>
-                <span className="ap-rate-input">
+                <span {...fieldCls("ap-rate-input", "rate")}>
                   <input value={ownPct} onChange={(e) => setOwnPct(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" aria-label="Own commission rate in percent" />%
                 </span>
+                <FieldError msg={show("rate")} />
               </span>
             )}
           </label>
         </div>
-        {rateError && <p className="fd-note ap-error">{rateError}</p>}
       </section>
 
       <div className="ap-save">
         <Button
-          disabled={!name.trim() || !changed || !!bankError || !!rateError}
+          disabled={!changed}
           onClick={() => {
+            if (Object.values(fieldErr).some(Boolean)) {
+              setTried(true);
+              focusFirstError();
+              return;
+            }
             if (detailsChanged) editAgent(agent.id, { name, phone, hospital });
             if (bankChanged) setAgentBank(agent.id, anyBank ? { bankName, accountNumber, accountName } : null);
             if (rateChanged) setAgentRate(agent.id, useOwn ? pctNum / 100 : null, name.trim());
@@ -1086,7 +1107,10 @@ function RateDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const error = !value.trim() || !Number.isFinite(n) || n < 0 || n > 50 ? "Enter a rate between 0% and 50%." : null;
   const own = Object.keys(commission.overrides).length;
   const save = () => {
-    if (error) return;
+    if (error) {
+      focusFirstError();
+      return;
+    }
     setCompanyRate(n / 100);
     showToast(`Company commission rate set to ${pct(n / 100)}`);
     onClose();
@@ -1103,19 +1127,18 @@ function RateDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={save} disabled={!!error}>
-            Save rate
-          </Button>
+          <Button onClick={save}>Save rate</Button>
         </>
       }
     >
       <div className="rate-dlg">
-        <label className="rate-dlg-field">
+        <label className={`rate-dlg-field ${error ? "is-error" : ""}`} data-field-error={error ? true : undefined}>
           <span>Company rate</span>
           <span className="rate-dlg-input">
             <input value={value} onChange={(e) => setValue(e.target.value.replace(/[^\d.]/g, ""))} onKeyDown={(e) => e.key === "Enter" && save()} inputMode="decimal" autoFocus aria-label="Company commission rate in percent" />
             <b>%</b>
           </span>
+          <FieldError msg={error} />
         </label>
         <div className="rate-chips" role="group" aria-label="Usual rates">
           {COMMON_RATES.map((r) => (
@@ -1125,7 +1148,7 @@ function RateDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
             </button>
           ))}
         </div>
-        {error ? <p className="rate-dlg-error">{error}</p> : <p className="rate-dlg-eg">Example: a patient whose tests total ₦100,000 earns the agent {formatMoney((100_000 * n) / 100, "NGN")}.</p>}
+        {!error && <p className="rate-dlg-eg">Example: a patient whose tests total ₦100,000 earns the agent {formatMoney((100_000 * n) / 100, "NGN")}.</p>}
         <ul className="rate-dlg-notes">
           <li>Applies to every PR agent who does not have their own rate{own ? ` — ${own} agent${own === 1 ? " has" : "s have"} their own rate and keep it` : ""}.</li>
           <li>Updates commission on the PR page, Finance &amp; Expenses, the dashboard and every report straight away.</li>

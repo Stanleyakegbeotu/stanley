@@ -16,7 +16,9 @@ import { Banknote, ClipboardList, UserRound, Users } from "lucide-react";
 import { useApp } from "@/app/AppState";
 import { getBranch } from "@/data/company";
 import type { PeriodSelection } from "@/data/types";
-import { patientVisits, patientsOnRecord, type PatientVisit } from "@/data/demo/dailyLines";
+import { findVisit, patientsOnRecord, recordVisits, type PatientVisit } from "@/data/demo/dailyLines";
+import { useBilling } from "@/services/billing";
+import { isoDate } from "@/data/demo/generator";
 import { formatCount, formatMoney, formatShortDate, formatTime } from "@/shared/format";
 import { Badge, EmptyState, Segmented, SelectMenu } from "@/shared/ui/controls";
 import { Pagination } from "@/shared/ui/Pagination";
@@ -30,6 +32,7 @@ type PatientSort = "recent" | "visits" | "billed" | "balance";
 
 interface PatientRow {
   ref: string;
+  name: string;
   /** Visits in the selected period, newest first. */
   visits: PatientVisit[];
   latest: PatientVisit;
@@ -50,7 +53,7 @@ function groupByPatient(visits: PatientVisit[]): PatientRow[] {
   for (const v of visits) {
     const row = map.get(v.patientRef);
     if (!row) {
-      map.set(v.patientRef, { ref: v.patientRef, visits: [v], latest: v, billed: v.billed, paid: v.paid, tests: v.services.length, isNew: v.isNew, agentId: v.agentId });
+      map.set(v.patientRef, { ref: v.patientRef, name: v.patientName, visits: [v], latest: v, billed: v.billed, paid: v.paid, tests: v.services.length, isNew: v.isNew, agentId: v.agentId });
     } else {
       row.visits.push(v);
       row.billed += v.billed;
@@ -63,7 +66,16 @@ function groupByPatient(visits: PatientVisit[]): PatientRow[] {
   return [...map.values()];
 }
 
-export function PatientDirectory({ branchId, initialQuery = "" }: { branchId: string; initialQuery?: string }) {
+export function PatientDirectory({
+  branchId,
+  initialQuery = "",
+  initialVisitId = null,
+}: {
+  branchId: string;
+  initialQuery?: string;
+  /** Open this visit record, on its own day (notification links). */
+  initialVisitId?: string | null;
+}) {
   const { agents } = useApp();
   const branch = getBranch(branchId);
   const c = branch?.currency ?? "NGN";
@@ -77,6 +89,12 @@ export function PatientDirectory({ branchId, initialQuery = "" }: { branchId: st
   if (!seeded) {
     setSeeded(true);
     if (initialQuery) f.setQ(initialQuery);
+    const v = initialVisitId ? findVisit(branchId, initialVisitId) : null;
+    if (v) {
+      const day = isoDate(v.at);
+      f.setPeriod({ key: "custom", from: day, to: day });
+      setViewing(v);
+    }
   }
 
   const agentName = useMemo(() => {
@@ -84,9 +102,17 @@ export function PatientDirectory({ branchId, initialQuery = "" }: { branchId: st
     return (id: number | null) => (id === null ? null : (map.get(id) ?? `PR agent #${id}`));
   }, [agents]);
 
-  const visits = useMemo(() => patientVisits(ids, f.range), [ids, f.range]);
+  // Demo activity + every bill saved in STANLEY (refreshes when a bill is saved).
+  const billing = useBilling();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const visits = useMemo(() => recordVisits(ids, f.range), [ids, f.range, billing.orders]);
   const patients = useMemo(() => groupByPatient(visits), [visits]);
-  const onRecord = useMemo(() => patientsOnRecord(branchId), [branchId]);
+  // Demo patients on record + patients registered through STANLEY billing.
+  const onRecord = useMemo(() => {
+    const demo = patientsOnRecord(branchId);
+    const billed = billing.patients.filter((p) => p.branchId === branchId).length;
+    return { total: demo.total + billed, registered: demo.registered + billed };
+  }, [branchId, billing.patients]);
 
   const label = f.period.key === "custom" ? (f.isDay ? formatShortDate(f.range.from) : "Selected dates") : periodLabel(f.period);
   const multiDay = f.range.days > 1;
@@ -108,7 +134,7 @@ export function PatientDirectory({ branchId, initialQuery = "" }: { branchId: st
       if (!needle) return true;
       return p.visits
         .flatMap((v) => [v.id, v.services.map((s) => s.name).join(" "), agentName(v.agentId) ?? ""])
-        .concat(p.ref)
+        .concat(p.ref, p.name)
         .join(" ")
         .toLowerCase()
         .includes(needle);
@@ -141,7 +167,7 @@ export function PatientDirectory({ branchId, initialQuery = "" }: { branchId: st
         basePeriod={BASE_PERIOD}
         branchSelect={false}
         allowRange
-        searchPlaceholder="Patient ref, visit ID, test or referrer"
+        searchPlaceholder="Patient name, ID, visit no., test or referrer"
         dirty={type !== "all"}
         onReset={() => {
           f.setPeriod(BASE_PERIOD);
@@ -234,14 +260,16 @@ export function PatientDirectory({ branchId, initialQuery = "" }: { branchId: st
                         tabIndex={0}
                         onClick={() => open(p)}
                         onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), open(p))}
-                        aria-label={`Open visit record for ${p.ref}`}
+                        aria-label={`Open visit record for ${p.name}`}
                       >
                         <td>
                           <span className="ep-patient">
-                            <strong>{p.ref}</strong>
+                            <strong>{p.name}</strong>
                             <Badge tone={p.isNew ? "brand" : "neutral"}>{p.isNew ? "New" : "Returning"}</Badge>
                           </span>
-                          <small className="ep-sub mono">{v.id}</small>
+                          <small className="ep-sub mono">
+                            {p.ref} · {v.id}
+                          </small>
                         </td>
                         <td className="num ep-nowrap">{multiDay ? `${formatShortDate(v.at)} · ${formatTime(v.at)}` : formatTime(v.at)}</td>
                         <td className="right num">{formatCount(p.visits.length)}</td>

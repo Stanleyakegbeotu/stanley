@@ -11,7 +11,8 @@ import { Header } from "@/shell/Header";
 import { Sidebar } from "@/shell/Sidebar";
 import { COMPANY_NAV, BRANCH_NAV_ITEMS } from "@/shell/navigation";
 import { CompanyDashboard } from "@/features/company/CompanyDashboard";
-import { AuditPage, BranchesPage, FinancePage, InventoryPage, PatientsPage, PRPage, ReportsPage, SettingsPage, StaffPage, TrashPage } from "@/features/company/pages";
+import { AuditPage, BranchesPage, FinancePage, InventoryPage, PatientsPage, PRPage, ReportsPage, StaffPage, TrashPage } from "@/features/company/pages";
+import { SettingsPage } from "@/features/settings/AdminSettings";
 import { BranchWorkspacePage } from "@/features/branch/pages";
 import { AssistantDock } from "@/features/intelligence/Intelligence";
 
@@ -74,6 +75,8 @@ function Shell() {
             </AnimatePresence>
           </div>
         </main>
+        {/* Docked bottom bar slot (mirror of the header) — pages such as Billing render their action bar here. */}
+        <div id="workspace-footer" className="workspace-footer" />
       </motion.div>
 
       <AssistantDock />

@@ -244,7 +244,7 @@ function PatientsCard({ visits, scope, periodText, onOpen }: { visits: PatientVi
               </span>
               <span className="dc-main">
                 <strong>
-                  {v.patientRef}
+                  {v.patientName}
                   {v.isNew && <em>New</em>}
                 </strong>
                 <small>
@@ -512,7 +512,7 @@ function PatientsModal({ open, basePeriod, baseBranchIds, onClose }: { open: boo
     if (type === "returning" && v.isNew) return false;
     if (type === "referred" && v.agentId === null) return false;
     if (!needle) return true;
-    return `${v.patientRef} ${v.id} ${v.services.map((s) => s.name).join(" ")} ${agentName(v.agentId) ?? ""} ${getBranch(v.branchId)?.name}`.toLowerCase().includes(needle);
+    return `${v.patientName} ${v.patientRef} ${v.id} ${v.services.map((s) => s.name).join(" ")} ${agentName(v.agentId) ?? ""} ${getBranch(v.branchId)?.name}`.toLowerCase().includes(needle);
   });
   const pages = Math.max(1, Math.ceil(rows.length / f.pageSize));
   const page = Math.min(f.page, pages);
@@ -629,10 +629,12 @@ function PatientsModal({ open, basePeriod, baseBranchIds, onClose }: { open: boo
                       <td className="num ep-nowrap">{when(v.at, multiDay)}</td>
                       <td>
                         <span className="ep-patient">
-                          <strong>{v.patientRef}</strong>
+                          <strong>{v.patientName}</strong>
                           <Badge tone={v.isNew ? "brand" : "neutral"}>{v.isNew ? "New" : "Returning"}</Badge>
                         </span>
-                        <small className="ep-sub mono">{v.id}</small>
+                        <small className="ep-sub mono">
+                          {v.patientRef} · {v.id}
+                        </small>
                       </td>
                       <td className="ep-services" title={v.services.map((s) => `${s.name} — ${formatMoney(s.price, c)}`).join("\n")}>
                         {v.services[0]?.name ?? "—"}

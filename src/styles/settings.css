@@ -1,0 +1,414 @@
+/* ───────────────────────── Settings (admin, manager, staff) ─────────────────────────
+   One theme colour only (owner rule). Loaded before bands.css. */
+
+/* Photos inside every avatar style */
+.avatar.has-photo,
+.hdr-avatar.has-photo,
+.st-avatar.has-photo {
+  padding: 0;
+  overflow: hidden;
+  background: var(--surface);
+}
+.avatar img,
+.hdr-avatar img,
+.st-avatar img,
+.sb-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  border-radius: inherit;
+}
+.sb-avatar {
+  overflow: hidden;
+}
+.sb-logo img,
+.brand-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  background: #fff;
+}
+
+.settings-content {
+  min-width: 0;
+}
+
+.st-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.st-block {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 18px;
+  background: var(--surface);
+}
+.st-block > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.st-block h4 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.st-block > header p {
+  margin: 3px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.st-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+.st-optional {
+  font-weight: 400;
+  font-size: 12px;
+}
+
+/* Image picker */
+.st-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.st-picker-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.st-picker-hint {
+  font-size: 12px;
+  color: var(--muted);
+}
+.btn.st-remove {
+  color: var(--danger);
+}
+
+/* Profile card */
+.st-profile {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.st-profile-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+  padding: 20px;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--brand-600);
+  background: linear-gradient(180deg, var(--brand-50), var(--surface) 70%);
+}
+.st-profile-photo {
+  position: relative;
+  flex: none;
+}
+.st-avatar {
+  width: 96px;
+  height: 96px;
+  border-radius: 26px;
+  display: grid;
+  place-items: center;
+  font-size: 30px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, var(--brand-600), var(--brand-800));
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--brand-700) 28%, transparent);
+}
+.st-photo-badge {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--brand-700);
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  box-shadow: var(--shadow-1);
+}
+.st-profile-id {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.st-profile-id h4 {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.st-profile-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.st-profile-tags > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.st-profile-tags svg {
+  color: var(--brand-600);
+}
+
+.st-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.st-details {
+  gap: 1px;
+  background: var(--line);
+}
+.st-details > div {
+  padding: 14px 18px;
+  min-width: 0;
+  background: var(--surface);
+}
+.st-details > div:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+.st-details dt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.st-details dt svg {
+  color: var(--brand-600);
+}
+.st-details dd {
+  margin: 5px 0 0;
+  font-size: 14.5px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.st-details dd small {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+/* Branch form */
+.st-readonly {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+.st-readonly > div {
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  background: var(--canvas);
+  border: 1px solid var(--line);
+  min-width: 0;
+}
+.st-readonly > div > span {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.st-readonly b {
+  display: block;
+  margin-top: 3px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.st-readonly-note {
+  margin: 8px 0 16px;
+}
+.st-branches {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* Logo & branding */
+.st-logo-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.st-logo-preview {
+  flex: none;
+  width: 96px;
+  height: 96px;
+  border-radius: 24px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-1);
+  background: #fff;
+}
+.st-logo-preview svg {
+  width: 100%;
+  height: 100%;
+}
+.st-logo-copy {
+  flex: 1;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.st-brand-sample {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: var(--r-lg);
+  background: linear-gradient(180deg, var(--sb-1), var(--sb-2));
+  color: var(--sb-ink);
+  max-width: 300px;
+}
+.st-brand-sample > span:last-child {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.st-brand-sample b {
+  font-size: 13.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.st-brand-sample small {
+  font-size: 11.5px;
+  color: var(--sb-muted);
+}
+.st-motto {
+  display: block;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.st-checklist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.st-checklist li {
+  position: relative;
+  padding-left: 22px;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+.st-checklist li::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 7px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--brand-500);
+}
+
+/* Branch staff */
+.st-staff-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.st-staff-counts {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.st-staff-counts > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--ink);
+  margin-right: 6px;
+}
+.st-staff-counts svg {
+  color: var(--brand-600);
+}
+.st-staff-actions {
+  display: flex;
+  gap: 8px;
+}
+.st-person {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.st-person > span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.st-crown {
+  color: var(--brand-600);
+  vertical-align: -2px;
+}
+.select-btn.st-status {
+  min-width: 140px;
+}
+.st-foot {
+  margin: 12px 0 0;
+}
+
+@media (max-width: 1100px) {
+  .st-readonly {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 760px) {
+  .st-profile-head {
+    flex-direction: column;
+  }
+  .st-details {
+    grid-template-columns: 1fr;
+  }
+  .st-readonly {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

@@ -6,7 +6,7 @@
  * from the legacy baseline). The others need the database, so saving shows a
  * clear "demo — not saved" confirmation instead of pretending to persist.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CalendarDays, ChevronDown, Lock, Plus, X } from "lucide-react";
 import { useApp } from "@/app/AppState";
 import { ACTIVE_BRANCHES, COMPANY, getBranch } from "@/data/company";
@@ -20,13 +20,19 @@ import { MANAGER_ROLE, STAFF_ROLES, managerOf, nextServiceId, nextUserId } from 
 import { formatMoney } from "@/shared/format";
 import { Button, SelectMenu } from "@/shared/ui/controls";
 import { FormDialog, FormField, FormSection, PreviewCard } from "@/shared/ui/FormDialog";
+import { focusFirstError } from "@/shared/ui/FieldError";
+import { NAME_INPUT_PROPS, nameChange } from "@/shared/nameCase";
 import { SearchSelect, type SearchOption } from "@/shared/ui/SearchSelect";
 
 const TODAY_ISO = isoDate(new Date());
 const filled = (s: string) => s.trim().length > 0;
 const branchOptions = () => ACTIVE_BRANCHES.map((b) => ({ value: b.id, label: b.name, description: `${b.code} · ${b.city} · ${b.currency}` }));
 
-function Footer({ onCancel, submitLabel, canSubmit, onSubmit, cancelLabel = "Cancel" }: { onCancel: () => void; submitLabel: string; canSubmit: boolean; onSubmit: () => void; cancelLabel?: string }) {
+/**
+ * Dialog footer. Save is never greyed out: if something required is missing,
+ * pressing it marks the fields (onInvalid) and scrolls to the first one.
+ */
+function Footer({ onCancel, submitLabel, canSubmit, onSubmit, onInvalid, cancelLabel = "Cancel" }: { onCancel: () => void; submitLabel: string; canSubmit: boolean; onSubmit: () => void; onInvalid: () => void; cancelLabel?: string }) {
   return (
     <>
       <span className="left">
@@ -35,11 +41,28 @@ function Footer({ onCancel, submitLabel, canSubmit, onSubmit, cancelLabel = "Can
       <Button variant="secondary" onClick={onCancel}>
         {cancelLabel}
       </Button>
-      <Button disabled={!canSubmit} onClick={onSubmit}>
+      <Button
+        onClick={() => {
+          if (canSubmit) onSubmit();
+          else {
+            onInvalid();
+            focusFirstError();
+          }
+        }}
+      >
         {submitLabel}
       </Button>
     </>
   );
+}
+
+/** Field errors appear only after a blocked Save, then update live as fields are fixed. Cleared each time the dialog opens. */
+function useFieldErrors(open: boolean) {
+  const [tried, setTried] = useState(false);
+  useEffect(() => {
+    if (open) setTried(false);
+  }, [open]);
+  return { mark: () => setTried(true), show: (bad: boolean, msg: string) => (tried && bad ? msg : undefined) };
 }
 
 /** Select trigger used inside FormDialog fields. */
@@ -112,6 +135,7 @@ const CURRENCY_OPTIONS: SearchOption[] = (() => {
 })();
 
 export function AddBranchDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const v = useFieldErrors(open);
   const { showToast } = useApp();
   const [name, setName] = useState("");
   const [country, setCountry] = useState("NG");
@@ -173,6 +197,7 @@ export function AddBranchDialog({ open, onClose }: { open: boolean; onClose: () 
         <Footer
           onCancel={close}
           submitLabel="Create branch"
+          onInvalid={v.mark}
           canSubmit={ready}
           onSubmit={() => {
             showToast(`${name.trim()} branch prepared with prefix ${prefix} and ${currency} (demo — branches are saved once the database is connected)`);
@@ -182,7 +207,7 @@ export function AddBranchDialog({ open, onClose }: { open: boolean; onClose: () 
       }
     >
       <FormSection id="identity" title="Branch identity">
-        <FormField label="Branch name" required>
+        <FormField label="Branch name" required error={v.show(!filled(name), "Enter the branch name.")}>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Ikeja Branch" />
         </FormField>
         <FormField label="Referral ID prefix" required as="div" hint="Generated automatically from the branch name — e.g. Abuja → ABJ, Lagos → LAG.">
@@ -211,7 +236,7 @@ export function AddBranchDialog({ open, onClose }: { open: boolean; onClose: () 
             }}
           />
         </FormField>
-        <FormField label="State / Region / Province" required as={c.regions.length ? "div" : "label"} hint={c.regions.length ? `${c.regions.length} listed for ${c.name}` : `No regions are listed for ${c.name} — type it in.`}>
+        <FormField label="State / Region / Province" required error={v.show(!filled(region), "Choose or type the state / region.")} as={c.regions.length ? "div" : "label"} hint={c.regions.length ? `${c.regions.length} listed for ${c.name}` : `No regions are listed for ${c.name} — type it in.`}>
           {c.regions.length ? (
             <SearchSelect
               key={c.code}
@@ -227,13 +252,13 @@ export function AddBranchDialog({ open, onClose }: { open: boolean; onClose: () 
             <input value={region} onChange={(e) => setRegion(e.target.value)} placeholder="State, region or province" />
           )}
         </FormField>
-        <FormField label="Complete physical branch address" required full>
+        <FormField label="Complete physical branch address" required error={v.show(!filled(address), "Enter the branch address.")} full>
           <textarea value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Street, building, area and other relevant location details" />
         </FormField>
       </FormSection>
 
       <FormSection id="contact" title="Contact and currency" note="A branch records every amount in one currency. Company totals keep each currency separate and never add them together.">
-        <FormField label="Branch phone numbers" required as="div" hint="At least one number. Add more for the front desk, lab or after-hours line.">
+        <FormField label="Branch phone numbers" required error={v.show(validPhones.length === 0, "Add at least one phone number.")} as="div" hint="At least one number. Add more for the front desk, lab or after-hours line.">
           <div className="fd-phones">
             {phones.map((ph, i) => (
               <div key={i} className="fd-phone">
@@ -259,7 +284,7 @@ export function AddBranchDialog({ open, onClose }: { open: boolean; onClose: () 
             )}
           </div>
         </FormField>
-        <FormField label="Branch currency" required as="div" hint={`Defaults to ${c.name}'s currency. ${CURRENCY_OPTIONS.length} currencies available.`}>
+        <FormField label="Branch currency" required error={v.show(!filled(currency), "Choose the branch currency.")} as="div" hint={`Defaults to ${c.name}'s currency. ${CURRENCY_OPTIONS.length} currencies available.`}>
           <SearchSelect
             value={currency}
             options={CURRENCY_OPTIONS}
@@ -275,7 +300,7 @@ export function AddBranchDialog({ open, onClose }: { open: boolean; onClose: () 
 
       <FormSection id="management" title="Management">
         <FormField label="Branch manager" hint="You can assign or change the manager later from Staff Management.">
-          <input value={manager} onChange={(e) => setManager(e.target.value)} placeholder="Full name" />
+          <input value={manager} {...NAME_INPUT_PROPS} onChange={nameChange(setManager)} placeholder="Full name" />
         </FormField>
         <FormField label="Opening date" required as="div" hint="Recorded automatically as the date this branch profile is created.">
           <div className="fd-static">
@@ -292,6 +317,7 @@ export function AddBranchDialog({ open, onClose }: { open: boolean; onClose: () 
 
 /** `initialHospital` preselects a hospital (e.g. when adding from inside a hospital's agent list). */
 export function AddAgentDialog({ open, onClose, hospitals, initialHospital = "" }: { open: boolean; onClose: () => void; hospitals: { key: string; count: number; raw: string[] }[]; initialHospital?: string }) {
+  const v = useFieldErrors(open);
   const { addAgent, showToast, userAgents } = useApp();
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -338,6 +364,7 @@ export function AddAgentDialog({ open, onClose, hospitals, initialHospital = "" 
         <Footer
           onCancel={close}
           submitLabel="Add PR agent"
+          onInvalid={v.mark}
           canSubmit={filled(name)}
           onSubmit={() => {
             const rec = addAgent({ name, phone, hospital: hospital ? hospitalKey(hospital) : "" });
@@ -348,8 +375,8 @@ export function AddAgentDialog({ open, onClose, hospitals, initialHospital = "" 
       }
     >
       <FormSection id="details" title="Agent details">
-        <FormField label="Full name" required full>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Dr Amaka Obi" />
+        <FormField label="Full name" required error={v.show(!filled(name), "Enter the PR agent's full name.")} full>
+          <input value={name} {...NAME_INPUT_PROPS} onChange={nameChange(setName)} placeholder="e.g. Dr Amaka Obi" />
         </FormField>
         <FormField label="Phone number" hint="Leave blank if unknown.">
           <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+234 …" inputMode="tel" />
@@ -386,6 +413,7 @@ export function AddAgentDialog({ open, onClose, hospitals, initialHospital = "" 
 const ROLES = STAFF_ROLES;
 
 export function AddStaffDialog({ open, onClose, branchId, presetRole, onCreated }: { open: boolean; onClose: () => void; branchId?: string | null; presetRole?: string; onCreated?: (id: string) => void }) {
+  const v = useFieldErrors(open);
   const { showToast, addStaff, staff } = useApp();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -437,6 +465,7 @@ export function AddStaffDialog({ open, onClose, branchId, presetRole, onCreated 
         <Footer
           onCancel={close}
           submitLabel="Add staff member"
+          onInvalid={v.mark}
           canSubmit={steps.every((s) => s.done) && emailOk && !(role === MANAGER_ROLE && currentManager)}
           onSubmit={() => {
             const created = addStaff({ name, role, branchId: branch, status: "Active", email, phone, employment, startDate: start });
@@ -448,10 +477,10 @@ export function AddStaffDialog({ open, onClose, branchId, presetRole, onCreated 
       }
     >
       <FormSection id="personal" title="Personal details" note="Provide at least an email address or a phone number.">
-        <FormField label="Full name" required full>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Chiamaka Eze" />
+        <FormField label="Full name" required error={v.show(!filled(name), "Enter the staff member's full name.")} full>
+          <input value={name} {...NAME_INPUT_PROPS} onChange={nameChange(setName)} placeholder="e.g. Chiamaka Eze" />
         </FormField>
-        <FormField label="Email address">
+        <FormField label="Email address" error={v.show(!emailOk, "Check the email address, e.g. name@company.com.") ?? v.show(!filled(email) && !filled(phone), "Enter an email address or a phone number.")}>
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" />
         </FormField>
         <FormField label="Phone number">
@@ -459,12 +488,12 @@ export function AddStaffDialog({ open, onClose, branchId, presetRole, onCreated 
         </FormField>
       </FormSection>
       <FormSection id="role" title="Role and branch">
-        <FormField label="Branch" required as="div">
+        <FormField label="Branch" required error={v.show(!filled(branch), "Choose the branch.")} as="div">
           <SelectMenu value={branch} ariaLabel="Branch" options={branchOptions()} onChange={(v: string) => setBranch(v)}>
             <Trigger code={b?.code} text={b?.name} placeholder="Select a branch" />
           </SelectMenu>
         </FormField>
-        <FormField label="Role" required full as="div">
+        <FormField label="Role" required error={v.show(!filled(role), "Choose a role.") ?? v.show(role === MANAGER_ROLE && !!currentManager, "This branch already has a manager — choose another role.")} full as="div">
           <div className="fd-tiles" role="group" aria-label="Role">
             {ROLES.map((x) => (
               <button key={x.value} type="button" className="fd-tile" aria-pressed={role === x.value} disabled={x.value === MANAGER_ROLE && !!currentManager} onClick={() => setRole(x.value)}>
@@ -476,7 +505,7 @@ export function AddStaffDialog({ open, onClose, branchId, presetRole, onCreated 
         </FormField>
       </FormSection>
       <FormSection id="employment" title="Employment">
-        <FormField label="Start date" required>
+        <FormField label="Start date" required error={v.show(!filled(start), "Choose the start date.")}>
           <input type="date" value={start} onChange={(e) => setStart(e.target.value)} />
         </FormField>
         <FormField label="Employment type" required as="div">
@@ -497,6 +526,7 @@ export function AddStaffDialog({ open, onClose, branchId, presetRole, onCreated 
 /* ─────────────── Expense ─────────────── */
 
 export function RecordExpenseDialog({ open, onClose, branchId }: { open: boolean; onClose: () => void; branchId?: string | null }) {
+  const v = useFieldErrors(open);
   const { showToast, user } = useApp();
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
@@ -550,6 +580,7 @@ export function RecordExpenseDialog({ open, onClose, branchId }: { open: boolean
         <Footer
           onCancel={close}
           submitLabel="Submit for approval"
+          onInvalid={v.mark}
           canSubmit={steps.every((s) => s.done || s.optional)}
           onSubmit={() => {
             showToast(`${description.trim()} · ${formatMoney(value, currency)} submitted for approval (demo — not saved)`);
@@ -559,23 +590,23 @@ export function RecordExpenseDialog({ open, onClose, branchId }: { open: boolean
       }
     >
       <FormSection id="details" title="Expense details">
-        <FormField label="Description" required full>
+        <FormField label="Description" required error={v.show(!filled(description), "Describe the expense.")} full>
           <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Reagent restock" />
         </FormField>
-        <FormField label="Category" required as="div">
+        <FormField label="Category" required error={v.show(!filled(category), "Choose a category.")} as="div">
           <SelectMenu value={category} ariaLabel="Expense category" options={EXPENSE_CATEGORIES.map((c) => ({ value: c as string, label: c }))} onChange={(v: string) => setCategory(v)}>
             <Trigger text={category} placeholder="Select a category" />
           </SelectMenu>
         </FormField>
-        <FormField label={`Amount (${currency})`} required hint={`Recorded in the branch currency, ${CURRENCY_NAMES[currency]}.`}>
+        <FormField label={`Amount (${currency})`} required error={v.show(!validAmount, "Enter an amount greater than 0.")} hint={`Recorded in the branch currency, ${CURRENCY_NAMES[currency]}.`}>
           <input value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d.,]/g, ""))} placeholder="0.00" inputMode="decimal" />
         </FormField>
       </FormSection>
       <FormSection id="when" title="Date and branch">
-        <FormField label="Expense date" required>
+        <FormField label="Expense date" required error={v.show(!filled(date), "Choose the expense date.")}>
           <input type="date" value={date} max={TODAY_ISO} onChange={(e) => setDate(e.target.value)} />
         </FormField>
-        <FormField label="Branch" required as="div">
+        <FormField label="Branch" required error={v.show(!filled(branch), "Choose the branch.")} as="div">
           <SelectMenu value={branch} ariaLabel="Branch" options={branchOptions()} onChange={(v: string) => setBranch(v)}>
             <Trigger code={b?.code} text={b?.name} placeholder="Select a branch" />
           </SelectMenu>
@@ -599,6 +630,7 @@ export function RecordExpenseDialog({ open, onClose, branchId }: { open: boolean
 /* ─────────────── Patient ─────────────── */
 
 export function RegisterPatientDialog({ open, onClose, branchId }: { open: boolean; onClose: () => void; branchId?: string | null }) {
+  const v = useFieldErrors(open);
   const { showToast, agents } = useApp();
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");
@@ -661,6 +693,7 @@ export function RegisterPatientDialog({ open, onClose, branchId }: { open: boole
         <Footer
           onCancel={close}
           submitLabel="Register patient"
+          onInvalid={v.mark}
           canSubmit={steps.every((s) => s.done || s.optional)}
           onSubmit={() => {
             showToast(`${first.trim()} ${last.trim()} registered at ${b?.name} (demo — not saved)`);
@@ -670,13 +703,13 @@ export function RegisterPatientDialog({ open, onClose, branchId }: { open: boole
       }
     >
       <FormSection id="personal" title="Personal details">
-        <FormField label="First name" required>
-          <input value={first} onChange={(e) => setFirst(e.target.value)} placeholder="e.g. Ngozi" />
+        <FormField label="First name" required error={v.show(!filled(first), "Enter the first name.")}>
+          <input value={first} {...NAME_INPUT_PROPS} onChange={nameChange(setFirst)} placeholder="e.g. Ngozi" />
         </FormField>
-        <FormField label="Last name" required>
-          <input value={last} onChange={(e) => setLast(e.target.value)} placeholder="e.g. Okafor" />
+        <FormField label="Last name" required error={v.show(!filled(last), "Enter the last name.")}>
+          <input value={last} {...NAME_INPUT_PROPS} onChange={nameChange(setLast)} placeholder="e.g. Okafor" />
         </FormField>
-        <FormField label="Sex" required as="div">
+        <FormField label="Sex" required error={v.show(!filled(sex), "Choose the sex.")} as="div">
           <div className="fd-tiles" role="group" aria-label="Sex" style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
             {["Female", "Male"].map((s) => (
               <button key={s} type="button" className="fd-tile" aria-pressed={sex === s} onClick={() => setSex(s)}>
@@ -685,12 +718,12 @@ export function RegisterPatientDialog({ open, onClose, branchId }: { open: boole
             ))}
           </div>
         </FormField>
-        <FormField label="Date of birth" required>
+        <FormField label="Date of birth" required error={v.show(!filled(dob), "Enter the date of birth.")}>
           <input type="date" value={dob} max={TODAY_ISO} onChange={(e) => setDob(e.target.value)} />
         </FormField>
       </FormSection>
       <FormSection id="contact" title="Contact">
-        <FormField label="Phone number" required>
+        <FormField label="Phone number" required error={v.show(!filled(phone), "Enter a phone number.")}>
           <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+234 …" inputMode="tel" />
         </FormField>
         <FormField label="Email address">
@@ -701,7 +734,7 @@ export function RegisterPatientDialog({ open, onClose, branchId }: { open: boole
         </FormField>
       </FormSection>
       <FormSection id="registration" title="Registration and referral">
-        <FormField label="Registration branch" required as="div">
+        <FormField label="Registration branch" required error={v.show(!filled(branch), "Choose the branch.")} as="div">
           <SelectMenu value={branch} ariaLabel="Registration branch" options={branchOptions()} onChange={(v: string) => setBranch(v)}>
             <Trigger code={b?.code} text={b?.name} placeholder="Select a branch" />
           </SelectMenu>
@@ -719,7 +752,7 @@ export function RegisterPatientDialog({ open, onClose, branchId }: { open: boole
       </FormSection>
       <FormSection id="kin" title="Next of kin">
         <FormField label="Full name">
-          <input value={kinName} onChange={(e) => setKinName(e.target.value)} placeholder="Contact in an emergency" />
+          <input value={kinName} {...NAME_INPUT_PROPS} onChange={nameChange(setKinName)} placeholder="Contact in an emergency" />
         </FormField>
         <FormField label="Phone number">
           <input value={kinPhone} onChange={(e) => setKinPhone(e.target.value)} placeholder="+234 …" inputMode="tel" />
@@ -733,6 +766,7 @@ export function RegisterPatientDialog({ open, onClose, branchId }: { open: boole
 
 /** Saved for the session (separate from the read-only legacy catalogue). `initialCategory` preselects a category. */
 export function AddServiceDialog({ open, onClose, initialCategory = "" }: { open: boolean; onClose: () => void; initialCategory?: string }) {
+  const v = useFieldErrors(open);
   const { showToast, addService, inventory } = useApp();
   const [name, setName] = useState("");
   const [category, setCategory] = useState(initialCategory);
@@ -785,6 +819,7 @@ export function AddServiceDialog({ open, onClose, initialCategory = "" }: { open
         <Footer
           onCancel={close}
           submitLabel="Add service"
+          onInvalid={v.mark}
           canSubmit={steps.every((s) => s.done || s.optional)}
           onSubmit={() => {
             const rec = addService({ name: name.trim(), category: category.trim().toUpperCase(), price: value, turnaround: turnaround.trim() || undefined, sample: sample.trim() || undefined, notes: notes.trim() || undefined });
@@ -795,10 +830,10 @@ export function AddServiceDialog({ open, onClose, initialCategory = "" }: { open
       }
     >
       <FormSection id="details" title="Service details">
-        <FormField label="Service name" required full>
+        <FormField label="Service name" required error={v.show(!filled(name), "Enter the service name.")} full>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Lipid profile" />
         </FormField>
-        <FormField label="Category" required full as="div" hint="Choose an existing category or type a new one.">
+        <FormField label="Category" required error={v.show(!filled(category), "Choose or type a category.")} full as="div" hint="Choose an existing category or type a new one.">
           <SearchSelect
             value={category}
             options={categoryOptions}
@@ -812,7 +847,7 @@ export function AddServiceDialog({ open, onClose, initialCategory = "" }: { open
         </FormField>
       </FormSection>
       <FormSection id="pricing" title="Pricing">
-        <FormField label="Price (NGN)" required>
+        <FormField label="Price (NGN)" required error={v.show(!validPrice, "Enter a price greater than 0.")}>
           <input value={price} onChange={(e) => setPrice(e.target.value.replace(/[^\d.,]/g, ""))} placeholder="0" inputMode="decimal" />
         </FormField>
         <FormField label="Available at" as="div">

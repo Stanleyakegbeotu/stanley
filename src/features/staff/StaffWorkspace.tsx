@@ -21,6 +21,8 @@ import { Reveal, useMotionPreset } from "@/shared/motion";
 import { formatCount } from "@/shared/format";
 import { Badge, Button, EmptyState, SearchInput, Segmented, SelectMenu } from "@/shared/ui/controls";
 import { SummaryChips } from "@/features/dashboard/ExpensesPatients";
+import { FieldError, focusFirstError } from "@/shared/ui/FieldError";
+import { NAME_INPUT_PROPS, nameChange } from "@/shared/nameCase";
 import { MoveToTrashDialog } from "@/features/admin/AdminLogs";
 
 export const staffInitials = (name: string) =>
@@ -446,7 +448,17 @@ function StaffEditForm({ member, onSaved }: { member: StaffRecord; onSaved: () =
   const otherManager = useMemo(() => staff.find((s) => s.branchId === member.branchId && s.id !== member.id && isManager(s) && s.status !== "Left"), [staff, member]);
 
   const emailOk = !email.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-  const error = !name.trim() ? "Enter the full name." : !phone.trim() && !email.trim() ? "Give at least a phone number or an email address." : !emailOk ? "Check the email address." : !startDate ? "Choose the start date." : role === MANAGER_ROLE && otherManager ? `${otherManager.name} is already the branch manager. Change their role first.` : null;
+  // Field errors — shown on each field after a blocked Save (owner rule), then updated live.
+  const fieldErr: Record<"name" | "contact" | "startDate" | "role", string | null> = {
+    name: !name.trim() ? "Enter the full name." : null,
+    contact: !phone.trim() && !email.trim() ? "Give at least a phone number or an email address." : !emailOk ? "Check the email address, e.g. name@company.com." : null,
+    startDate: !startDate ? "Choose the start date." : null,
+    role: role === MANAGER_ROLE && otherManager ? `${otherManager.name} is already the branch manager. Change their role first.` : null,
+  };
+  const error = Object.values(fieldErr).some(Boolean);
+  const [tried, setTried] = useState(false);
+  const show = (k: keyof typeof fieldErr) => (tried ? fieldErr[k] : null);
+  const fieldCls = (base: string, k: keyof typeof fieldErr) => ({ className: `${base} ${show(k) ? "is-error" : ""}`, "data-field-error": show(k) ? true : undefined });
   const patch = { name: name.trim(), phone: phone.trim(), email: email.trim(), address: address.trim() || undefined, role, employment, startDate, status, notes: notes.trim() || undefined };
   const changed = (Object.keys(patch) as (keyof typeof patch)[]).some((k) => (patch[k] ?? "") !== (member[k] ?? ""));
 
@@ -457,19 +469,21 @@ function StaffEditForm({ member, onSaved }: { member: StaffRecord; onSaved: () =
           <span>Personal details</span>
         </h3>
         <div className="fd-grid">
-          <label className="fd-field full">
+          <label {...fieldCls("fd-field full", "name")}>
             <span className="fd-label">
               Full name <em aria-hidden="true">*</em>
             </span>
-            <input value={name} onChange={(e) => setName(e.target.value)} />
+            <input value={name} {...NAME_INPUT_PROPS} onChange={nameChange(setName)} />
+            <FieldError msg={show("name")} />
           </label>
           <label className="fd-field">
             <span className="fd-label">Phone number</span>
             <input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="+234 …" />
           </label>
-          <label className="fd-field">
+          <label {...fieldCls("fd-field", "contact")}>
             <span className="fd-label">Email address</span>
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" />
+            <FieldError msg={show("contact")} />
           </label>
           <label className="fd-field full">
             <span className="fd-label">
@@ -495,6 +509,11 @@ function StaffEditForm({ member, onSaved }: { member: StaffRecord; onSaved: () =
             );
           })}
         </div>
+        {show("role") && (
+          <div {...fieldCls("fd-field", "role")}>
+            <FieldError msg={show("role")} />
+          </div>
+        )}
       </section>
 
       <section className="fd-section">
@@ -506,9 +525,12 @@ function StaffEditForm({ member, onSaved }: { member: StaffRecord; onSaved: () =
             <span className="fd-label">Employment type</span>
             <SelectMenu value={employment} ariaLabel="Employment type" options={EMPLOYMENT_TYPES.map((v) => ({ value: v, label: v }))} onChange={(v: string) => setEmployment(v)} />
           </div>
-          <label className="fd-field">
-            <span className="fd-label">Start date</span>
+          <label {...fieldCls("fd-field", "startDate")}>
+            <span className="fd-label">
+              Start date <em aria-hidden="true">*</em>
+            </span>
             <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            <FieldError msg={show("startDate")} />
           </label>
           <div className="fd-field full">
             <span className="fd-label">Status</span>
@@ -530,11 +552,15 @@ function StaffEditForm({ member, onSaved }: { member: StaffRecord; onSaved: () =
         </div>
       </section>
 
-      {error && <p className="fd-note ap-error">{error}</p>}
       <div className="ap-save">
         <Button
-          disabled={!changed || !!error}
+          disabled={!changed}
           onClick={() => {
+            if (error) {
+              setTried(true);
+              focusFirstError();
+              return;
+            }
             editStaff(member.id, patch);
             showToast(`${patch.name} updated`);
             onSaved();

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { ChevronDown } from "lucide-react";
 import { useApp } from "@/app/AppState";
@@ -200,6 +200,32 @@ const TICKER_SPEED = 60;
  * (hovering or focusing the ticker also pauses). Reduced motion shows a static row.
  */
 function LiveStrip({ summary }: { summary: Summary }) {
+  return (
+    <HeroTicker label="Company-wide live indicators">
+      <TickerItems summary={summary} />
+    </HeroTicker>
+  );
+}
+
+/** One indicator in a ticker: coloured dot, label and value. */
+export function StripItem({ color, label, value, title }: { color: string; label: string; value: ReactNode; title?: string }) {
+  return (
+    <li className="strip-item" title={title}>
+      <i style={{ background: color }} />
+      {label} <b>{value}</b>
+    </li>
+  );
+}
+
+/** Dot colours used by every banner ticker (same as the dashboard). */
+export const STRIP_COLORS = ["#8cc8ff", "#6fe3c6", "#ffd27a", "#ff9a8f", "#9db8ff", "#c3a6ff"] as const;
+
+/**
+ * The live ticker strip at the bottom of a banner (dashboard and every page
+ * banner). Scrolls continuously; LIVE/PAUSED button and hover pause it;
+ * reduced motion shows a static row.
+ */
+export function HeroTicker({ label, children }: { label: string; children: ReactNode }) {
   const reduced = useReducedMotion();
   const [paused, setPaused] = useState(false);
   const viewport = useRef<HTMLDivElement>(null);
@@ -239,15 +265,15 @@ function LiveStrip({ summary }: { summary: Summary }) {
         <span className={`live-dot ${paused ? "" : "pulse"}`} />
         {paused ? "PAUSED" : "LIVE"}
       </button>
-      <div className="ticker" ref={viewport} role="region" aria-label="Company-wide live indicators">
+      <div className="ticker" ref={viewport} role="region" aria-label={label}>
         <div className="ticker-enter" style={style}>
           <div className="ticker-track">
             <ul className="ticker-group" ref={group}>
-              <TickerItems summary={summary} />
+              {children}
             </ul>
             {!reduced && (
               <ul className="ticker-group" aria-hidden="true">
-                <TickerItems summary={summary} />
+                {children}
               </ul>
             )}
           </div>

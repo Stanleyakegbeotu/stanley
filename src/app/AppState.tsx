@@ -11,11 +11,11 @@ import {
 } from "react";
 import { DEFAULT_THEME, isThemeId, type ThemeId } from "./themes";
 import { useHashRoute, type Route } from "./router";
-import { NOTIFICATIONS, type NotificationItem } from "@/data/demo/records";
-import { CURRENT_USER, getBranch } from "@/data/company";
+import { BRANCH_MANAGER_PLACEHOLDER, CURRENT_USER, getBranch, type AppUser } from "@/data/company";
 import { LEGACY_BRANCH_ID, hospitalKey } from "@/data/legacy";
-import { logAudit } from "@/services/audit";
-import { BASELINE_AGENTS, EMPTY_INVENTORY_CHANGES, applyAgentEdits, mergeAgents, nextServiceId, nextUserId, type AddedService, type AgentEdit, type AgentRecord, type BankDetails, type InventoryChanges, nextStaffId, type StaffRecord } from "@/data/userRecords";
+import { logAudit, setAuditActor } from "@/services/audit";
+import { BASELINE_AGENTS, EMPTY_INVENTORY_CHANGES, applyAgentEdits, mergeAgents, nextServiceId, nextUserId, type AddedService, type AgentEdit, type AgentRecord, type BankDetails, type InventoryChanges, isManager, managerOf, nextStaffId, type StaffRecord } from "@/data/userRecords";
+import { useSettings } from "@/services/settingsStore";
 import type { PeriodSelection } from "@/data/types";
 
 /* localStorage is a per-viewer convenience only; every read/write is guarded. */
@@ -35,7 +35,9 @@ function writeStore(key: string, value: string) {
 }
 
 interface AppStateValue {
-  user: typeof CURRENT_USER;
+  user: AppUser;
+  /** Demo account switch inside a branch (until sign-in exists): staff id, or null for the manager. */
+  switchAccount: (branchId: string, staffId: string | null) => void;
   theme: ThemeId;
   setTheme: (t: ThemeId) => void;
   collapsed: boolean;
@@ -47,9 +49,6 @@ interface AppStateValue {
   setPeriod: (p: PeriodSelection) => void;
   route: Route;
   navigate: (to: string) => void;
-  notifications: NotificationItem[];
-  markRead: (id: string) => void;
-  markAllRead: () => void;
   toast: string | null;
   showToast: (msg: string) => void;
   assistantOpen: boolean;
@@ -131,7 +130,6 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   const [context, setContext] = useState("all");
   const [period, setPeriod] = useState<PeriodSelection>({ key: "today" });
-  const [notifications, setNotifications] = useState(NOTIFICATIONS);
   const [toast, setToast] = useState<string | null>(null);
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [assistantQuestion, setAssistantQuestion] = useState<string | null>(null);
@@ -147,6 +145,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [staff, setStaff] = useState<StaffRecord[]>([]);
   // Live copy so a new record (and its id) is known immediately, not after the next render.
   const staffRef = useRef<StaffRecord[]>([]);
+  /** Signed-in person (see `user` below) — read by actions such as Move to trash. */
+  const userRef = useRef<AppUser>(CURRENT_USER);
   const branchLabel = (id: string | null | undefined) => (id ? `${getBranch(id)?.name ?? id} branch` : "");
   const addStaff = useCallback((s: Omit<StaffRecord, "id" | "createdAt">) => {
     const created: StaffRecord = { ...s, name: s.name.trim(), email: s.email.trim(), phone: s.phone.trim(), id: nextStaffId(staffRef.current), createdAt: new Date().toISOString() };
@@ -230,7 +230,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     if (!s) return;
     staffRef.current = staffRef.current.filter((x) => x.id !== id);
     setStaff(staffRef.current);
-    commitTrash([{ id: `TR-${Date.now()}`, kind: "staff", name: s.name, type: `Staff · ${s.role}`, branchId: s.branchId, deletedBy: CURRENT_USER.name, deletedAt: new Date().toISOString(), reason: reason?.trim() || undefined, staff: s }, ...trashRef.current]);
+    commitTrash([{ id: `TR-${Date.now()}`, kind: "staff", name: s.name, type: `Staff · ${s.role}`, branchId: s.branchId, deletedBy: userRef.current.name, deletedAt: new Date().toISOString(), reason: reason?.trim() || undefined, staff: s }, ...trashRef.current]);
     logAudit({ category: "Trash", action: "Moved to trash", record: `${s.name} (${s.id})`, details: `Staff · ${s.role}${reason?.trim() ? ` · Reason: ${reason.trim()}` : ""} · kept 30 days`, branchId: s.branchId });
   }, []);
   const moveAgentToTrash = useCallback(
@@ -238,7 +238,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       const a = userAgents.find((x) => x.id === id);
       if (!a) return;
       setUserAgents((list) => list.filter((x) => x.id !== id));
-      commitTrash([{ id: `TR-${Date.now()}`, kind: "agent", name: a.name, type: "PR agent (added in app)", branchId: LEGACY_BRANCH_ID, deletedBy: CURRENT_USER.name, deletedAt: new Date().toISOString(), reason: reason?.trim() || undefined, agent: a }, ...trashRef.current]);
+      commitTrash([{ id: `TR-${Date.now()}`, kind: "agent", name: a.name, type: "PR agent (added in app)", branchId: LEGACY_BRANCH_ID, deletedBy: userRef.current.name, deletedAt: new Date().toISOString(), reason: reason?.trim() || undefined, agent: a }, ...trashRef.current]);
       logAudit({ category: "Trash", action: "Moved to trash", record: `${a.name} (#${a.id})`, details: `PR agent${reason?.trim() ? ` · Reason: ${reason.trim()}` : ""} · kept 30 days`, branchId: LEGACY_BRANCH_ID });
     },
     [userAgents],
@@ -362,20 +362,61 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     return () => window.clearTimeout(t);
   }, [toast]);
 
-  const markRead = useCallback(
-    (id: string) => setNotifications((list) => list.map((n) => (n.id === id ? { ...n, read: true } : n))),
-    [],
-  );
-  const markAllRead = useCallback(() => setNotifications((list) => list.map((n) => ({ ...n, read: true }))), []);
-
   const askAssistant = useCallback((q: string) => {
     setAssistantQuestion(q);
     setAssistantOpen(true);
   }, []);
 
+  // Signed-in person: the Company Admin, or — inside a branch workspace — that
+  // branch's manager, unless a branch staff account was picked with "Switch
+  // account" (demo stand-in until real sign-in exists).
+  const branchId = route.segments[0] === "branch" ? route.segments[1] : null;
+  const [actingAs, setActingAs] = useState<Record<string, string>>({});
+  const { profiles } = useSettings();
+  const user = useMemo<AppUser>(() => {
+    const first = (n: string) => n.split(/\s+/)[0] || n;
+    const withProfile = (base: AppUser): AppUser => {
+      const p = profiles[base.key] ?? {};
+      const name = p.name?.trim() || base.name;
+      return { ...base, name, firstName: first(name), email: p.email?.trim() || base.email, phone: p.phone ?? base.phone, address: p.address ?? base.address, photo: p.photo };
+    };
+    if (!branchId) return withProfile(CURRENT_USER);
+    const fromStaff = (s: StaffRecord, kind: AppUser["kind"]): AppUser => ({
+      name: s.name,
+      firstName: first(s.name),
+      role: s.role,
+      email: s.email || BRANCH_MANAGER_PLACEHOLDER.email,
+      phone: s.phone,
+      address: s.address,
+      kind,
+      key: s.id,
+      staffId: s.id,
+      branchId,
+      photo: profiles[s.id]?.photo,
+    });
+    const picked = staff.find((s) => s.id === actingAs[branchId] && s.branchId === branchId && s.status !== "Left" && s.status !== "Suspended");
+    if (picked) return fromStaff(picked, isManager(picked) ? "manager" : "staff");
+    const m = managerOf(staff, branchId);
+    return m ? fromStaff(m, "manager") : withProfile({ ...BRANCH_MANAGER_PLACEHOLDER, key: `placeholder-manager:${branchId}`, branchId });
+  }, [branchId, staff, actingAs, profiles]);
+  userRef.current = user;
+  setAuditActor(user.name, user.role);
+
+  const switchAccount = useCallback((branch: string, staffId: string | null) => {
+    setActingAs((a) => {
+      const next = { ...a };
+      if (staffId) next[branch] = staffId;
+      else delete next[branch];
+      return next;
+    });
+    const s = staffId ? staffRef.current.find((x) => x.id === staffId) : null;
+    logAudit({ category: "System", action: "Account switched (demo)", record: s ? `${s.name} (${s.id})` : "Branch manager", details: s ? `Now working as ${s.role}` : "Back to the branch manager account", branchId: branch });
+  }, []);
+
   const value = useMemo<AppStateValue>(
     () => ({
-      user: CURRENT_USER,
+      user,
+      switchAccount,
       theme,
       setTheme,
       collapsed,
@@ -386,9 +427,6 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setPeriod,
       route,
       navigate,
-      notifications,
-      markRead,
-      markAllRead,
       toast,
       showToast,
       assistantOpen,
@@ -420,7 +458,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       revertService,
       addService,
     }),
-    [theme, setTheme, collapsed, setCollapsed, context, period, route, navigate, notifications, markRead, markAllRead, toast, showToast, assistantOpen, assistantQuestion, askAssistant, signOutOpen, agents, userAgents, addAgent, agentEdits, editAgent, revertAgent, agentBanks, setAgentBank, staff, addStaff, editStaff, trash, moveStaffToTrash, moveAgentToTrash, restoreFromTrash, purgeFromTrash, inventory, renameCategory, editService, revertService, addService],
+    [user, switchAccount, theme, setTheme, collapsed, setCollapsed, context, period, route, navigate, toast, showToast, assistantOpen, assistantQuestion, askAssistant, signOutOpen, agents, userAgents, addAgent, agentEdits, editAgent, revertAgent, agentBanks, setAgentBank, staff, addStaff, editStaff, trash, moveStaffToTrash, moveAgentToTrash, restoreFromTrash, purgeFromTrash, inventory, renameCategory, editService, revertService, addService],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

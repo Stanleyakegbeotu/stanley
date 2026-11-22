@@ -18,12 +18,47 @@ export const COMPANY = {
   owner: NOT_ON_RECORD,
 };
 
+/** The signed-in account. Every account — admin, manager or staff — has a profile. */
+export interface AppUser {
+  name: string;
+  firstName: string;
+  role: string;
+  email: string;
+  /** admin = whole company · manager = runs one branch · staff = own account only. */
+  kind: "admin" | "manager" | "staff";
+  /** Profile key in settingsStore: "admin", "placeholder-manager:<branch>" or the staff id. */
+  key: string;
+  staffId?: string;
+  branchId?: string;
+  phone?: string;
+  address?: string;
+  /** Profile photo (data URL). */
+  photo?: string;
+}
+
 /** Signed-in user. No user records were exported, so this is a generic administrator account. */
-export const CURRENT_USER = {
+export const CURRENT_USER: AppUser = {
   name: "Company Administrator",
   firstName: "Administrator",
   role: "Company Admin",
   email: NOT_ON_RECORD,
+  kind: "admin",
+  key: "admin",
+};
+
+/**
+ * Who is signed in to a branch workspace until staff accounts and sign-in
+ * exist. Owner request (2026-11-21): address the branch dashboard to the
+ * manager by a realistic name. Placeholder name — replaced automatically by the
+ * branch's real manager once one is added in Staff Management.
+ */
+export const BRANCH_MANAGER_PLACEHOLDER: AppUser = {
+  name: "Chioma Okafor",
+  firstName: "Chioma",
+  role: "Branch Manager",
+  email: NOT_ON_RECORD,
+  kind: "manager",
+  key: "placeholder-manager",
 };
 
 export const BRANCHES: Branch[] = [

@@ -1,42 +1,104 @@
+/**
+ * Theme-coloured page banner, built to the dashboard banner's proportions so
+ * no page banner is taller than the dashboard's:
+ *
+ *  • One row: eyebrow + title on the left; a compact reporting-period dropdown
+ *    and the page's main button on the right (never wraps on desktop).
+ *  • The page's own sidebar icon at the right edge, on a floating glass tile
+ *    with slow orbiting rings (decorative; stills for reduced motion).
+ *  • Optional live ticker strip along the bottom with the page's key figures —
+ *    the same strip as the dashboard (LIVE / PAUSED, pauses on hover).
+ */
 import { useState, type ReactNode } from "react";
-import { SlidersHorizontal } from "lucide-react";
+import { CalendarDays, ChevronDown, type LucideIcon } from "lucide-react";
 import { useApp } from "@/app/AppState";
+import { COMPANY_NAV } from "@/shell/navigation";
 import { isoDate } from "@/data/demo/generator";
 import type { PeriodSelection } from "@/data/types";
 import { Reveal } from "@/shared/motion";
 import { formatFullDate } from "@/shared/format";
-import { Button } from "@/shared/ui/controls";
+import { Button, SelectMenu } from "@/shared/ui/controls";
 import { Modal } from "@/shared/ui/Modal";
-import { DATA_START, TODAY, resolveRange } from "@/services/analytics";
+import { DATA_START, PERIOD_OPTIONS, TODAY, periodLabel, resolveRange } from "@/services/analytics";
+import { HeroTicker, STRIP_COLORS, StripItem, rangeText } from "@/features/dashboard/WelcomeBanner";
+import { useHeroStats, type HeroPage } from "./heroStats";
 
-const PERIODS: { key: PeriodSelection["key"]; label: string }[] = [
-  { key: "today", label: "Today" },
-  { key: "yesterday", label: "Yesterday" },
-  { key: "week", label: "This week" },
-  { key: "month", label: "This month" },
-  { key: "year", label: "This year" },
-];
+export interface HeroStat {
+  label: string;
+  value: ReactNode;
+  title?: string;
+}
 
-/**
- * Theme-coloured page banner: eyebrow + title on the left; reporting-period
- * pills (incl. a custom range) and page actions on the right.
- */
-export function PageHero({ eyebrow, title, actions, period = true }: { eyebrow: string; title: string; actions?: ReactNode; period?: boolean }) {
+export function PageHero({
+  eyebrow,
+  title,
+  actions,
+  period = true,
+  icon,
+  strip,
+  stats,
+  scope,
+}: {
+  eyebrow: string;
+  title: string;
+  actions?: ReactNode;
+  period?: boolean;
+  icon?: LucideIcon;
+  /** Key figures shown in the live strip at the bottom of the banner. */
+  strip?: HeroStat[];
+  /** Or: show this page's standard key figures (see heroStats.ts). */
+  stats?: HeroPage;
+  /** Branch ids the figures cover (defaults to the dashboard context). */
+  scope?: string[];
+}) {
+  const { route, context } = useApp();
+  const pageStats = useHeroStats(stats ?? "settings", scope ?? (context === "all" ? null : [context]));
+  if (stats && !strip) strip = pageStats;
+  const Icon = icon ?? COMPANY_NAV.find((n) => route.path === n.path || route.path.startsWith(`${n.path}/`))?.icon;
+  const hasActions = period || !!actions;
   return (
-    <Reveal as="section" className="ph-hero" aria-label={title}>
-      <div className="ph-copy">
-        <span className="ph-eyebrow">{eyebrow}</span>
-        <h1>{title}</h1>
+    <Reveal as="section" className={`ph-hero ${hasActions ? "has-actions" : ""} ${Icon ? "has-art" : ""} ${strip?.length ? "has-strip" : ""}`} aria-label={title}>
+      <div className="ph-main">
+        <div className="ph-copy">
+          <span className="ph-eyebrow">{eyebrow}</span>
+          <h1>{title}</h1>
+        </div>
+        {hasActions && (
+          <div className="ph-actions">
+            {period && <PeriodSelect />}
+            {actions}
+          </div>
+        )}
+        {Icon && (
+          <div className="ph-art" aria-hidden="true">
+            <span className="ph-art-stage">
+              <span className="ph-art-glow" />
+              <span className="ph-art-ring is-outer">
+                <i />
+              </span>
+              <span className="ph-art-ring is-inner">
+                <i />
+              </span>
+              <span className="ph-art-tile">
+                <Icon size={32} strokeWidth={1.7} />
+              </span>
+            </span>
+          </div>
+        )}
       </div>
-      <div className="ph-actions">
-        {period && <PeriodPills />}
-        {actions}
-      </div>
+      {!!strip?.length && (
+        <HeroTicker label={`${title} — key figures`}>
+          {strip.map((s, i) => (
+            <StripItem key={s.label} color={STRIP_COLORS[i % STRIP_COLORS.length]} label={s.label} value={s.value} title={s.title} />
+          ))}
+        </HeroTicker>
+      )}
     </Reveal>
   );
 }
 
-function PeriodPills() {
+/** Compact reporting-period dropdown (same choices as the dashboard), with a custom range. */
+function PeriodSelect() {
   const { period, setPeriod } = useApp();
   const [customOpen, setCustomOpen] = useState(false);
   const range = resolveRange(period);
@@ -45,26 +107,27 @@ function PeriodPills() {
 
   return (
     <>
-      <div className="ph-periods" role="tablist" aria-label="Reporting period">
-        {PERIODS.map((p) => (
-          <button key={p.key} type="button" role="tab" aria-selected={period.key === p.key} className={period.key === p.key ? "is-active" : ""} onClick={() => setPeriod({ key: p.key })}>
-            {p.label}
-          </button>
-        ))}
-        <button
-          type="button"
-          role="tab"
-          aria-selected={period.key === "custom"}
-          className={period.key === "custom" ? "is-active" : ""}
-          onClick={() => {
+      <SelectMenu
+        value={period.key}
+        ariaLabel={`Reporting period: ${periodLabel(period)}`}
+        className="ph-period"
+        placement="bottom-end"
+        options={PERIOD_OPTIONS.map((o) => ({ value: o.key, label: o.label }))}
+        onChange={(key: PeriodSelection["key"]) => {
+          if (key === "custom") {
             setFrom(isoDate(range.from));
             setTo(isoDate(range.to));
             setCustomOpen(true);
-          }}
-        >
-          <SlidersHorizontal size={15} /> Custom
-        </button>
-      </div>
+          } else setPeriod({ key });
+        }}
+      >
+        <CalendarDays size={16} />
+        <span className="ph-period-text">
+          <b>{periodLabel(period)}</b>
+          <small>{range.days === 1 ? range.from.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }) : rangeText(range)}</small>
+        </span>
+        <ChevronDown size={17} />
+      </SelectMenu>
       <Modal
         open={customOpen}
         onClose={() => setCustomOpen(false)}

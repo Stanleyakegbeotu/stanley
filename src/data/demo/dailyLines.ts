@@ -19,13 +19,16 @@ import { EXPENSE_CATEGORIES, PAYMENT_METHODS, type DateRange, type PaymentMethod
 import { DAILY, DATA_START, addDays, diffDays, isoDate } from "./generator";
 import { STAFF } from "./records";
 import { dayCommission, rateSummary } from "@/services/commission";
+import { billingState, type Order } from "@/services/billing";
 
 export type VisitPayment = "Paid" | "Part-paid" | "Unpaid";
 
 export interface PatientVisit {
   id: string;
-  /** Anonymous patient reference. */
+  /** Patient ID (PT-… demo patients; ABJ-W…/ABJ-R… for patients billed in STANLEY). */
   patientRef: string;
+  /** Patient's full name. */
+  patientName: string;
   /** Patient phone number (optional at registration; null when not provided). */
   phone: string | null;
   branchId: string;
@@ -163,6 +166,32 @@ function identityPlan(branchId: string): IdentityPlan {
 
 const patientRefOf = (id: number) => `PT-${String(id).padStart(5, "0")}`;
 
+/*
+ * Demo patient names (owner request, 2026-11-22). The legacy export had no
+ * patient records, so the demo patients get common Nigerian names — the same
+ * name for the same patient number every time. Real names come from billing.
+ */
+const FIRST_NAMES = [
+  "Adaeze", "Adebayo", "Aisha", "Amaka", "Amina", "Babajide", "Bola", "Chidi", "Chiamaka", "Chinedu", "Chioma", "Daniel", "Danjuma", "Ebuka",
+  "Efe", "Emeka", "Esther", "Fatima", "Femi", "Funke", "Grace", "Halima", "Ibrahim", "Ifeoma", "Ikenna", "Joy", "Kehinde", "Kemi", "Kunle",
+  "Ladi", "Maryam", "Musa", "Nkechi", "Ngozi", "Nneka", "Obinna", "Olumide", "Ronke", "Sadiq", "Samuel", "Segun", "Sola", "Tunde", "Uche",
+  "Usman", "Yetunde", "Yusuf", "Zainab", "Blessing", "Godwin", "Hauwa", "Peter", "Rukayat", "Tobi", "Victor", "Hadiza", "Ifeanyi", "Abubakar",
+];
+const LAST_NAMES = [
+  "Abubakar", "Adebayo", "Adeleke", "Adeyemi", "Akande", "Aliyu", "Bakare", "Bello", "Chukwu", "Danladi", "Eze", "Ibrahim", "Lawal", "Mohammed",
+  "Musa", "Nwachukwu", "Nwosu", "Obi", "Odukoya", "Ogunleye", "Ojo", "Okafor", "Okeke", "Okonkwo", "Olaniyan", "Onyeka", "Oyelaran", "Salami",
+  "Sani", "Suleiman", "Uche", "Udeh", "Umar", "Usman", "Yakubu", "Yusuf", "Babangida", "Dikko", "Garba", "Idris", "Kalu", "Mbah", "Ndukwe",
+  "Oladipo", "Onuoha", "Shehu", "Tanko", "Uzor", "Waziri", "Ekwueme",
+];
+/** Same demo name for the same patient number. */
+export function patientNameOf(id: number): string {
+  let h = (id * 2654435761) >>> 0;
+  const first = FIRST_NAMES[h % FIRST_NAMES.length];
+  h = Math.imul(h ^ (h >>> 15), 2246822519) >>> 0;
+  const last = LAST_NAMES[h % LAST_NAMES.length];
+  return `${first} ${last}`;
+}
+
 export interface PatientHistory {
   patientRef: string;
   /** Visits oldest first. */
@@ -173,6 +202,10 @@ export interface PatientHistory {
 
 /** Every recorded visit of one anonymous patient at a branch. */
 export function patientHistory(branchId: string, patientRef: string): PatientHistory {
+  if (!patientRef.startsWith("PT-")) {
+    const visits = orderVisits([branchId]).filter((v) => v.patientRef === patientRef).sort((a, b) => a.at.getTime() - b.at.getTime());
+    return { patientRef, visits, preExisting: false };
+  }
   const id = Number(patientRef.replace(/\D/g, ""));
   const plan = identityPlan(branchId);
   const visits = (plan.visitsOf.get(id) ?? []).map(({ day, p }) => visitsForDay(branchId, day)[p]).filter(Boolean);
@@ -262,6 +295,7 @@ function visitsForDay(branchId: string, dayIndex: number): PatientVisit[] {
     return {
       id: `V${branch.code}-${mmdd}-${String(p + 1).padStart(3, "0")}`,
       patientRef: patientRefOf(plan.ids[dayIndex]?.[p] ?? 0),
+      patientName: patientNameOf(plan.ids[dayIndex]?.[p] ?? 0),
       // No patient records were exported, so no phone numbers exist yet (never invented).
       phone: null,
       branchId,
@@ -558,4 +592,105 @@ export function expenseLines(branchIds: string[], range: DateRange): ExpenseLine
   const out: ExpenseLine[] = [];
   for (const id of branchIds) for (const i of dayIndexes(range)) out.push(...expensesForDay(id, i));
   return out.sort((a, b) => b.at.getTime() - a.at.getTime());
+}
+
+/** Finds one visit by its id (e.g. `VBR001-1121-035`) — used by notification links. */
+export function findVisit(branchId: string, visitId: string): PatientVisit | null {
+  const m = /^V.+-(\d{2})(\d{2})-\d{3}$/.exec(visitId);
+  if (!m) return null;
+  const day = new Date(DATA_START.getFullYear(), Number(m[1]) - 1, Number(m[2]));
+  const i = diffDays(DATA_START, day);
+  if (i < 0 || i >= (DAILY[branchId]?.length ?? 0)) return null;
+  return visitsForDay(branchId, i).find((v) => v.id === visitId) ?? null;
+}
+
+/* ─────────────── Patient search (header) ─────────────── */
+
+export interface PatientIndexEntry {
+  ref: string;
+  name: string;
+  /** Recorded visits at the branch. */
+  visits: number;
+  /** Day index of the latest visit. */
+  lastDay: number;
+}
+
+const indexCache = new Map<string, PatientIndexEntry[]>();
+
+/** Every patient with a recorded visit at the branch, most recent visit first. */
+export function patientIndex(branchId: string): PatientIndexEntry[] {
+  const hit = indexCache.get(branchId);
+  if (hit) return hit;
+  const plan = identityPlan(branchId);
+  const out: PatientIndexEntry[] = [];
+  for (const [id, list] of plan.visitsOf) if (list.length) out.push({ ref: patientRefOf(id), name: patientNameOf(id), visits: list.length, lastDay: Math.max(...list.map((x) => x.day)) });
+  out.sort((a, b) => b.lastDay - a.lastDay || a.ref.localeCompare(b.ref));
+  indexCache.set(branchId, out);
+  return withBilled(branchId, out);
+}
+
+/** Patients registered in STANLEY (billing) come first — they are the newest. */
+function withBilled(branchId: string, demo: PatientIndexEntry[]): PatientIndexEntry[] {
+  const st = billingState();
+  const billed = st.patients
+    .filter((p) => p.branchId === branchId)
+    .map((p) => {
+      const orders = st.orders.filter((o) => o.patient.uuid === p.uuid);
+      const last = orders.reduce((m, o) => (o.createdAt > m ? o.createdAt : m), p.registeredAt);
+      return { ref: p.patientId, name: p.name, visits: orders.length, lastDay: diffDays(DATA_START, new Date(last)) };
+    });
+  return billed.length ? [...billed.sort((a, b) => b.lastDay - a.lastDay), ...demo] : demo;
+}
+
+/* ─────────────── Bills saved in STANLEY as patient visits ─────────────── */
+
+const ROLE_OF = (role: string): PatientVisit["processedBy"]["role"] => (role === "Branch Manager" ? "Branch Manager" : "Receptionist");
+
+/** A saved bill as a patient visit, so it appears in patient records like any other visit. */
+export function orderToVisit(o: Order): PatientVisit {
+  const method: PaymentMethod | null = o.method === null ? null : o.method === "Split" ? (o.split.slice().sort((a, b) => b.amount - a.amount)[0]?.method ?? null) : o.method;
+  return {
+    id: o.invoiceNo,
+    patientRef: o.patient.patientId,
+    patientName: o.patient.name,
+    phone: o.patient.phone || null,
+    branchId: o.branchId,
+    at: new Date(o.createdAt),
+    isNew: o.patient.isNew,
+    services: o.services.map((x) => ({ id: x.id, name: x.name, price: x.appliedPrice })),
+    billed: o.total,
+    paid: o.amountPaid,
+    payment: o.balance <= 0 ? "Paid" : o.amountPaid > 0 ? "Part-paid" : "Unpaid",
+    agentId: o.referral.agentId,
+    method,
+    processedBy: { role: ROLE_OF(o.createdBy.role), name: o.createdBy.name },
+  };
+}
+
+/** Bills saved in STANLEY for the branches (optionally within a date range), newest first. */
+export function orderVisits(branchIds: string[], range?: DateRange): PatientVisit[] {
+  const from = range ? new Date(range.from.getFullYear(), range.from.getMonth(), range.from.getDate()).getTime() : -Infinity;
+  const to = range ? new Date(range.to.getFullYear(), range.to.getMonth(), range.to.getDate() + 1).getTime() : Infinity;
+  return billingState()
+    .orders.filter((o) => branchIds.includes(o.branchId))
+    .map(orderToVisit)
+    .filter((v) => v.at.getTime() >= from && v.at.getTime() < to)
+    .sort((a, b) => b.at.getTime() - a.at.getTime());
+}
+
+/**
+ * Patient records: the demo activity plus every bill saved in STANLEY, newest
+ * first. Used by the patient lists and search (money widgets still use the
+ * demo totals until billing feeds the financial figures).
+ */
+export function recordVisits(branchIds: string[], range: DateRange): PatientVisit[] {
+  const billed = orderVisits(branchIds, range);
+  const demo = patientVisits(branchIds, range);
+  return billed.length ? [...billed, ...demo].sort((a, b) => b.at.getTime() - a.at.getTime()) : demo;
+}
+
+/** The patient's most recent visit at the branch. */
+export function latestVisit(branchId: string, patientRef: string): PatientVisit | null {
+  const v = patientHistory(branchId, patientRef).visits;
+  return v.length ? v.reduce((a, b) => (b.at > a.at ? b : a)) : null;
 }

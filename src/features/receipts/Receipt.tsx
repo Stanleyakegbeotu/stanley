@@ -9,10 +9,10 @@
  * payment summary (discount, method, paid / outstanding or FULLY PAID) →
  * thank-you message.
  */
-import { COMPANY, SERVICES, type getBranch } from "@/data/company";
+import { SERVICES, type getBranch } from "@/data/company";
 import type { PatientVisit } from "@/data/demo/dailyLines";
 import { formatMoney } from "@/shared/format";
-import { LogoMark } from "@/shell/Logo";
+import { BrandLogo, useCompanyName } from "@/shell/BrandLogo";
 import type { ReceiptProfile } from "@/services/receiptProfile";
 
 export type ReceiptPaper = "58" | "80" | "a5";
@@ -50,6 +50,7 @@ const dateText = (d: Date) => d.toLocaleDateString("en-GB", { day: "numeric", mo
 const timeText = (d: Date) => d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 
 export function ReceiptDoc({ visit, branch, agentName, hospital, profile, paper, options, printedAt }: ReceiptData) {
+  const companyName = useCompanyName();
   const c = branch?.currency ?? "NGN";
   const money = (n: number) => formatMoney(n, c);
   const contact = (branch && profile.branches[branch.id]) || { address: "", phone: "" };
@@ -63,9 +64,9 @@ export function ReceiptDoc({ visit, branch, agentName, hospital, profile, paper,
       {/* Company */}
       <header className="rc-head">
         <div className="rc-logo">
-          <LogoMark />
+          <BrandLogo />
         </div>
-        <div className="rc-co">{COMPANY.name}</div>
+        <div className="rc-co">{companyName}</div>
         {profile.motto && <div className="rc-motto">“{profile.motto}”</div>}
         <div className="rc-line rc-branch">
           {branch?.name} Branch · {branch?.code}
@@ -90,6 +91,10 @@ export function ReceiptDoc({ visit, branch, agentName, hospital, profile, paper,
       {/* Patient */}
       <section className="rc-sec">
         <div className="rc-sec-t">Patient</div>
+        <div className="rc-kv">
+          <span>Name</span>
+          <b>{visit.patientName}</b>
+        </div>
         <div className="rc-kv">
           <span>Patient ID</span>
           <b className="rc-num">{visit.patientRef}</b>
@@ -197,7 +202,7 @@ export const RECEIPT_CSS = `
 .rc *{box-sizing:border-box}
 .rc-head{text-align:center;padding-bottom:2.4mm;border-bottom:1px dashed #111}
 .rc-logo{width:var(--rc-logo);height:var(--rc-logo);margin:0 auto 1.6mm}
-.rc-logo svg{display:block;width:100%;height:100%}
+.rc-logo svg,.rc-logo img{display:block;width:100%;height:100%;object-fit:contain}
 .rc-co{font-weight:700;font-size:1.22em;line-height:1.2;text-transform:uppercase;letter-spacing:.01em}
 .rc-motto{font-style:italic;margin-top:.6mm}
 .rc-line{margin-top:.5mm;overflow-wrap:anywhere}
@@ -223,4 +228,5 @@ export const RECEIPT_CSS = `
 .rc-foot{text-align:center;padding-top:2.6mm;border-top:1px dashed #111;margin-top:1.6mm}
 .rc-thanks{font-weight:600;line-height:1.45}
 .rc-small{margin-top:1.4mm;font-size:.8em;color:#555}
+.rc-note{margin-top:1.6mm;text-align:center;font-size:.84em;line-height:1.4;color:#333}
 `;

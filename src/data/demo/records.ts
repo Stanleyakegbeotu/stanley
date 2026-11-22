@@ -90,7 +90,7 @@ function buildRecentBills(): BillRecord[] {
     return SERVICES[0];
   };
   const referred = today?.referralAgentIds ?? [];
-  const methods = ["Cash", "POS", "Transfer", "HMO"];
+  const methods = ["Cash", "POS", "Transfer"];
   const count = Math.min(12, Math.max(4, today?.patients ?? 0));
   const out: BillRecord[] = [];
   let minutes = 4;

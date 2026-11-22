@@ -5,11 +5,11 @@ import { ArrowLeft, Building2, ChevronRight, LogOut, PanelLeftClose, PanelLeftOp
 import { useApp } from "@/app/AppState";
 import { branchRoute } from "@/app/router";
 import { THEMES, type ThemeId } from "@/app/themes";
-import { ACTIVE_BRANCHES, BRANCHES, COMPANY, getBranch } from "@/data/company";
+import { ACTIVE_BRANCHES, BRANCHES, getBranch } from "@/data/company";
 import { initials } from "@/shared/format";
 import { Popover } from "@/shared/ui/Popover";
 import { Badge } from "@/shared/ui/controls";
-import { LogoMark } from "./Logo";
+import { BrandLogo, UserAvatar, useCompanyName } from "./BrandLogo";
 import { COMPANY_NAV, branchNav } from "./navigation";
 
 type Tip = { label: string; top: number; left: number } | null;
@@ -26,6 +26,7 @@ export function Sidebar() {
   const items = br ? branchNav(br.branchId) : COMPANY_NAV;
   const activeId = br ? br.page : (COMPANY_NAV.find((i) => route.path.startsWith(i.path))?.id ?? "dashboard");
   const [tip, setTip] = useState<Tip>(null);
+  const companyName = useCompanyName();
 
   const showTip = (el: HTMLElement, label: string) => {
     if (!collapsed) return;
@@ -49,10 +50,10 @@ export function Sidebar() {
     >
       <div className="sb-brand">
         <div className="sb-logo">
-          <LogoMark />
+          <BrandLogo />
         </div>
         <div className="sb-brand-text sb-fade">
-          <strong>{COMPANY.name}</strong>
+          <strong>{companyName}</strong>
           <span>{branch ? `${branch.name} Branch` : contextBranch ? contextBranch.name : "All branches"}</span>
         </div>
         <button
@@ -155,7 +156,7 @@ function SidebarBottom({ tipHandlers }: { tipHandlers: TipHandlers }) {
             onClick={() => collapsed && setAccountOpen((o) => !o)}
             {...(collapsed ? tipHandlers("Account & theme") : {})}
           >
-            {initials(user.name)}
+            {user.photo ? <img src={user.photo} alt="" className="sb-avatar-img" /> : initials(user.name)}
           </button>
           <span className="sb-account-text">
             <strong>{user.name}</strong>
@@ -178,7 +179,7 @@ function SidebarBottom({ tipHandlers }: { tipHandlers: TipHandlers }) {
       <Popover anchor={avatarRef} open={accountOpen && collapsed} onClose={() => setAccountOpen(false)} placement="right-end" offset={14} width={260} label="Account">
         <div className="menu-label">Signed in as</div>
         <div className="menu-item" style={{ cursor: "default" }}>
-          <span className="avatar">{initials(user.name)}</span>
+          <UserAvatar name={user.name} photo={user.photo} />
           <span className="mi-text">
             {user.name}
             <small>{user.role}</small>

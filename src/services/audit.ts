@@ -8,10 +8,16 @@
  */
 import { useSyncExternalStore } from "react";
 import { CURRENT_USER } from "@/data/company";
+
+/** The person entries are recorded against — set by the app when the workspace (admin / branch) changes. */
+let actor = { name: CURRENT_USER.name, role: CURRENT_USER.role };
+export function setAuditActor(name: string, role: string) {
+  actor = { name, role };
+}
 import { LEGACY_BRANCH_ID, LEGACY_META } from "@/data/legacy";
 
-export type AuditCategory = "System" | "PR agents" | "Commission" | "Staff" | "Catalogue" | "Trash" | "Reports" | "Receipts";
-export const AUDIT_CATEGORIES: readonly AuditCategory[] = ["PR agents", "Commission", "Staff", "Catalogue", "Trash", "Reports", "Receipts", "System"];
+export type AuditCategory = "System" | "Billing" | "PR agents" | "Commission" | "Staff" | "Catalogue" | "Trash" | "Reports" | "Receipts" | "Settings";
+export const AUDIT_CATEGORIES: readonly AuditCategory[] = ["Billing", "PR agents", "Commission", "Staff", "Catalogue", "Trash", "Reports", "Receipts", "Settings", "System"];
 
 export interface AuditEntry {
   id: string;
@@ -46,7 +52,7 @@ const listeners = new Set<() => void>();
 /** Record a change made by the signed-in user. */
 export function logAudit(e: { category: AuditCategory; action: string; record: string; details: string; branchId?: string | null }) {
   seq += 1;
-  entries = [{ id: `AUD-${String(seq).padStart(6, "0")}`, at: new Date(), user: CURRENT_USER.name, role: CURRENT_USER.role, branchId: e.branchId ?? null, ...e }, ...entries];
+  entries = [{ id: `AUD-${String(seq).padStart(6, "0")}`, at: new Date(), user: actor.name, role: actor.role, branchId: e.branchId ?? null, ...e }, ...entries];
   listeners.forEach((l) => l());
 }
 

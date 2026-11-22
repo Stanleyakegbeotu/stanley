@@ -360,7 +360,7 @@ function WorkspaceBody({ branchId, titleId, onClose }: { branchId: string; title
                     empty="No patients in this period."
                     rows={visits.slice(0, 5).map((v) => ({
                       key: v.id,
-                      main: v.patientRef,
+                      main: v.patientName,
                       sub: `${range.days > 1 ? `${formatShortDate(v.at)} · ` : ""}${formatTime(v.at)} · ${v.services[0]?.name ?? "—"}${v.services.length > 1 ? ` +${v.services.length - 1}` : ""}`,
                       value: formatMoney(v.billed, c, true),
                       meta: v.payment,
@@ -446,7 +446,7 @@ function PatientsTab({ visits, agents, currency: c, multiDay, resetKey }: { visi
     if (type === "returning" && v.isNew) return false;
     if (type === "referred" && v.agentId === null) return false;
     if (type === "balance" && v.payment === "Paid") return false;
-    return !needle || `${v.patientRef} ${v.id} ${v.services.map((x) => x.name).join(" ")} ${v.agentId !== null ? names.get(v.agentId) : ""}`.toLowerCase().includes(needle);
+    return !needle || `${v.patientName} ${v.patientRef} ${v.id} ${v.services.map((x) => x.name).join(" ")} ${v.agentId !== null ? names.get(v.agentId) : ""}`.toLowerCase().includes(needle);
   });
   const billed = rows.reduce((a, v) => a + v.billed, 0);
   const paid = rows.reduce((a, v) => a + v.paid, 0);
@@ -488,10 +488,12 @@ function PatientsTab({ visits, agents, currency: c, multiDay, resetKey }: { visi
             render: (v) => (
               <>
                 <span className="ep-patient">
-                  <strong>{v.patientRef}</strong>
+                  <strong>{v.patientName}</strong>
                   <Badge tone={v.isNew ? "brand" : "neutral"}>{v.isNew ? "New" : "Returning"}</Badge>
                 </span>
-                <small className="ep-sub mono">{v.id}</small>
+                <small className="ep-sub mono">
+                  {v.patientRef} · {v.id}
+                </small>
               </>
             ),
           },

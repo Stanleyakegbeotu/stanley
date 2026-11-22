@@ -2,9 +2,9 @@ import { useEffect, useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, X } from "lucide-react";
-import { COMPANY } from "@/data/company";
 import { useMotionPreset } from "@/shared/motion";
-import { LogoMark } from "@/shell/Logo";
+import { BrandLogo, useCompanyName } from "@/shell/BrandLogo";
+import { FieldError } from "./FieldError";
 
 export interface FormStep {
   /** Id of the <FormSection> this step scrolls to. */
@@ -51,6 +51,7 @@ export function FormDialog({
   children: ReactNode;
 }) {
   const m = useMotionPreset();
+  const companyName = useCompanyName();
   const titleId = useId();
   const box = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
@@ -93,10 +94,10 @@ export function FormDialog({
             <aside className="fd-side">
               <div className="fd-brand">
                 <span className="fd-logo" aria-hidden="true">
-                  <LogoMark />
+                  <BrandLogo />
                 </span>
                 <div>
-                  <strong>{COMPANY.name}</strong>
+                  <strong>{companyName}</strong>
                   <small>{contextLabel}</small>
                 </div>
               </div>
@@ -165,16 +166,17 @@ export function FormSection({ id, title, children, note }: { id: string; title: 
 }
 
 /** Label + control. `full` spans both columns. */
-export function FormField({ label, hint, required, full, children, as = "label" }: { label: string; hint?: ReactNode; required?: boolean; full?: boolean; children: ReactNode; as?: "label" | "div" }) {
+/** A form field. `error` shows the message ON the field (red outline + message) — see FieldError. */
+export function FormField({ label, hint, required, full, children, as = "label", error }: { label: string; hint?: ReactNode; required?: boolean; full?: boolean; children: ReactNode; as?: "label" | "div"; error?: string | false | null }) {
   const Tag = as;
   return (
-    <Tag className={`fd-field ${full ? "full" : ""}`}>
+    <Tag className={`fd-field ${full ? "full" : ""} ${error ? "is-error" : ""}`} data-field-error={error ? true : undefined} aria-invalid={error ? true : undefined}>
       <span className="fd-label">
         {label}
         {required ? <em aria-hidden="true">*</em> : <i>Optional</i>}
       </span>
       {children}
-      {hint && <small className="fd-hint">{hint}</small>}
+      {error ? <FieldError msg={error} /> : hint && <small className="fd-hint">{hint}</small>}
     </Tag>
   );
 }

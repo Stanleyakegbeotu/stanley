@@ -49,6 +49,7 @@ import { useMotionPreset } from "@/shared/motion";
 import { formatCount, formatMoney } from "@/shared/format";
 import { Badge, Button, EmptyState, SearchInput, Segmented, SelectMenu } from "@/shared/ui/controls";
 import { Modal } from "@/shared/ui/Modal";
+import { FieldError, focusFirstError } from "@/shared/ui/FieldError";
 import { Pagination } from "@/shared/ui/Pagination";
 import { SummaryChips } from "@/features/dashboard/ExpensesPatients";
 import { AddServiceDialog } from "@/features/shared/createForms";
@@ -439,6 +440,7 @@ export function InventoryCatalog({
                   onClick={() => open(x.key)}
                   aria-label={`${x.label}: ${x.items.length} services — view services`}
                 >
+                  <Icon className="cat-mark" size={featured ? 190 : 130} strokeWidth={1.3} aria-hidden="true" />
                   <div className="inv-card-head">
                     <span className="inv-card-icon" aria-hidden="true">
                       <Icon size={featured ? 26 : 22} />
@@ -536,6 +538,7 @@ export function InventoryCatalog({
               const only = x.items.length === 1 ? x.items[0] : null;
               return (
                 <motion.button key={x.key} type="button" className="inv-tile" variants={m.revealItem} whileHover={m.cardHover} onClick={() => open(x.key)} aria-label={`${x.label} — view services`}>
+                  <Icon className="cat-mark" size={76} strokeWidth={1.4} aria-hidden="true" />
                   <span className="inv-tile-icon" aria-hidden="true">
                     <Icon size={20} />
                   </span>
@@ -799,7 +802,13 @@ function EditServiceForm({ item, onClose }: { item: CatalogueItem; onClose: () =
   const [name, setName] = useState(item.name);
   const [price, setPrice] = useState(item.price === null ? "" : String(item.price));
   const value = price.trim() === "" ? null : Number(price.replace(/,/g, ""));
-  const valid = name.trim().length > 0 && (value === null || (Number.isFinite(value) && value > 0));
+  // Field errors — shown on each field after a blocked Save (owner rule), then updated live.
+  const fieldErr = {
+    name: name.trim().length === 0 ? "Enter the service name." : null,
+    price: value !== null && !(Number.isFinite(value) && value > 0) ? "Enter a price greater than 0, or leave it blank." : null,
+  };
+  const valid = !fieldErr.name && !fieldErr.price;
+  const [tried, setTried] = useState(false);
   const recorded = item.recorded ?? (item.source === "legacy" ? { name: item.name, price: item.price } : null);
   const changed = name.trim() !== item.name || value !== item.price;
 
@@ -829,8 +838,13 @@ function EditServiceForm({ item, onClose }: { item: CatalogueItem; onClose: () =
             Cancel
           </Button>
           <Button
-            disabled={!valid || !changed}
+            disabled={!changed}
             onClick={() => {
+              if (!valid) {
+                setTried(true);
+                focusFirstError();
+                return;
+              }
               editService(item.id, { name: name.trim(), price: value });
               showToast(`${name.trim()} updated${value !== null ? ` · ${money(value)}` : ""} (this session)`);
               onClose();
@@ -842,13 +856,15 @@ function EditServiceForm({ item, onClose }: { item: CatalogueItem; onClose: () =
       }
     >
       <div className="form-grid">
-        <label className="field full">
+        <label className={`field full ${tried && fieldErr.name ? "is-error" : ""}`} data-field-error={tried && fieldErr.name ? true : undefined}>
           Service name
           <input value={name} onChange={(e) => setName(e.target.value)} />
+          <FieldError msg={tried && fieldErr.name} />
         </label>
-        <label className="field">
+        <label className={`field ${tried && fieldErr.price ? "is-error" : ""}`} data-field-error={tried && fieldErr.price ? true : undefined}>
           Price (NGN)
           <input value={price} onChange={(e) => setPrice(e.target.value.replace(/[^\d.,]/g, ""))} placeholder="No price on file" inputMode="decimal" />
+          <FieldError msg={tried && fieldErr.price} />
         </label>
         <div className="field">
           Category

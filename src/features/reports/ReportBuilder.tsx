@@ -38,7 +38,8 @@ import {
 } from "lucide-react";
 import { useApp } from "@/app/AppState";
 import { logAudit } from "@/services/audit";
-import { BRANCHES, COMPANY } from "@/data/company";
+import { BRANCHES } from "@/data/company";
+import { companyName } from "@/services/settingsStore";
 import { DATA_START, TODAY, addDays, isoDate } from "@/data/demo/generator";
 import type { DateRange } from "@/data/types";
 import { resolveRange } from "@/services/analytics";
@@ -133,7 +134,7 @@ const dayText = (d: Date) => `${formatShortDate(d)} ${d.getFullYear()}`;
 
 async function printPages(doc: ReturnType<ReportSpec["build"]>, pages: Page[], paper: Paper) {
   const { renderToStaticMarkup } = await import("react-dom/server");
-  const markup = renderToStaticMarkup(<AllPages doc={doc} pages={pages} paper={paper} company={COMPANY.name} />);
+  const markup = renderToStaticMarkup(<AllPages doc={doc} pages={pages} paper={paper} company={companyName()} />);
   const { brand, ink } = brandColours();
   const size = paper.size === "Letter" ? "letter" : paper.size;
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(doc.title)}</title><link rel="stylesheet" href="${REPORT_FONT_URL}"><style>${REPORT_CSS}
@@ -168,7 +169,20 @@ interface Reminder {
   include: () => void;
 }
 
-export function ReportBuilder({ spec, initialBranch, onClose }: { spec: ReportSpec; initialBranch?: string; onClose: () => void }) {
+export function ReportBuilder({
+  spec,
+  initialBranch,
+  initialVariant,
+  initialMonth,
+  onClose,
+}: {
+  spec: ReportSpec;
+  initialBranch?: string;
+  /** Deep links (e.g. a commission-payout notification). */
+  initialVariant?: string | null;
+  initialMonth?: string | null;
+  onClose: () => void;
+}) {
   const { agents, showToast } = useApp();
   const m = useMotionPreset();
   const titleId = useId();
@@ -176,12 +190,12 @@ export function ReportBuilder({ spec, initialBranch, onClose }: { spec: ReportSp
   const pane = useRef<HTMLDivElement>(null);
 
   /* ── Choices ── */
-  const [variant, setVariant] = useState(spec.variants[0].id);
+  const [variant, setVariant] = useState(spec.variants.find((x) => x.id === initialVariant)?.id ?? spec.variants[0].id);
   const [preset, setPreset] = useState<Preset>("month");
   const [from, setFrom] = useState(isoDate(addDays(TODAY, -6)));
   const [to, setTo] = useState(isoDate(TODAY));
   // Month picker (monthly reports such as the commission payout): "YYYY-MM"; defaults to the last full month.
-  const [month, setMonth] = useState(() => monthKeyOf(TODAY.getMonth() > DATA_START.getMonth() || TODAY.getFullYear() > DATA_START.getFullYear() ? new Date(TODAY.getFullYear(), TODAY.getMonth() - 1, 1) : TODAY));
+  const [month, setMonth] = useState(() => (initialMonth && /^\d{4}-\d{2}$/.test(initialMonth) ? initialMonth : null) ?? monthKeyOf(TODAY.getMonth() > DATA_START.getMonth() || TODAY.getFullYear() > DATA_START.getFullYear() ? new Date(TODAY.getFullYear(), TODAY.getMonth() - 1, 1) : TODAY));
   const [branch, setBranch] = useState(initialBranch ?? "all");
   const [options, setOptions] = useState<Record<string, boolean>>(() => Object.fromEntries((spec.options ?? []).map((o) => [o.id, o.default])));
   const [columns, setColumns] = useState<Record<string, string[]>>(() => Object.fromEntries(Object.entries(spec.columns ?? {}).map(([v, defs]) => [v, defs.filter((d) => d.default).map((d) => d.id)])));
@@ -350,7 +364,7 @@ export function ReportBuilder({ spec, initialBranch, onClose }: { spec: ReportSp
     try {
       if (o === "print" && pages) await printPages(doc, pages, deferred.paper);
       if (o === "pdf") {
-        await savePdf(doc, deferred.paper, brandColours().brand, COMPANY.name);
+        await savePdf(doc, deferred.paper, brandColours().brand, companyName());
         showToast(`Saved ${doc.filename}.pdf`);
       }
     } finally {
@@ -533,7 +547,7 @@ export function ReportBuilder({ spec, initialBranch, onClose }: { spec: ReportSp
               {pages?.slice(0, limit).map((p, i) => (
                 <div key={i} className="rb-sheet" style={{ width: pw * scale, height: ph * scale }}>
                   <div style={{ transform: `scale(${scale})`, transformOrigin: "top left" }}>
-                    <PageView doc={doc} page={p} index={i} count={pages.length} paper={deferred.paper} company={COMPANY.name} />
+                    <PageView doc={doc} page={p} index={i} count={pages.length} paper={deferred.paper} company={companyName()} />
                   </div>
                 </div>
               ))}

@@ -184,7 +184,8 @@ function generateBranch(branch: Branch, seedIndex: number): DayRecord[] {
     const avgBill = patients > 0 ? revenue / patients : scale.bill;
     const transactions = Math.round(patients * (1 + 0.1 * rand()) + collected / Math.max(avgBill, 1));
 
-    const methodW = [0.2 + 0.05 * rand(), 0.38 + 0.06 * rand(), 0.32 + 0.06 * rand(), 0.1 + 0.03 * rand()];
+    const methodW = [0.2 + 0.05 * rand(), 0.38 + 0.06 * rand(), 0.32 + 0.06 * rand()];
+    rand(); // former HMO weight — still drawn so the rest of the demo data stays identical
     const wSum = methodW.reduce((a, b) => a + b, 0);
     const paymentsByMethod = methodW.map((w) => (payments * w) / wSum);
 

@@ -16,21 +16,41 @@ import type { PatientVisit } from "@/data/demo/dailyLines";
 import { hospitalKey } from "@/data/legacy";
 import { updateBranchContact, updateReceiptProfile, useReceiptProfile } from "@/services/receiptProfile";
 import { useMotionPreset } from "@/shared/motion";
-import { saveFile } from "@/features/reports/model";
-import { REPORT_FONT_URL } from "@/features/reports/reportCss";
 import { RECEIPT_CSS, RECEIPT_PAPERS, ReceiptDoc, type ReceiptData, type ReceiptOptions, type ReceiptPaper } from "./Receipt";
+import { downloadPdf, exportPng, printDocument } from "./receiptOutput";
 
-const PX_PER_MM = 96 / 25.4;
-const esc = (s: string) => s.replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch] as string);
-
-/**
- * Renders the receipt with the browser's own layout engine (SVG foreignObject),
- * so the image and PDF match the preview pixel for pixel — fonts included.
- */
-async function capture(el: HTMLElement) {
-  const { toCanvas } = await import("html-to-image");
-  await document.fonts?.ready;
-  return toCanvas(el, { pixelRatio: 3, backgroundColor: "#ffffff", cacheBust: true });
+/** Branch address/phone, email, motto and thank-you — printed on receipts and price quotes. */
+export function ReceiptDetailsCard({ step, branch }: { step: number; branch: ReturnType<typeof getBranch> }) {
+  const profile = useReceiptProfile();
+  const contact = (branch && profile.branches[branch.id]) || { address: "", phone: "" };
+  return (
+    <section className="rcm-card">
+      <h3>
+        <i>{step}</i> Receipt details
+      </h3>
+      <p className="rcm-help">These were not in the legacy records. Fill them in once and they print on every receipt and price quote (saved for this session until the database is connected).</p>
+      <label className="rcm-field">
+        <span>{branch?.name} branch address</span>
+        <input value={contact.address} onChange={(e) => branch && updateBranchContact(branch.id, { address: e.target.value })} placeholder={`e.g. Plot 12, … ${branch?.city}`} />
+      </label>
+      <label className="rcm-field">
+        <span>Branch phone</span>
+        <input value={contact.phone} onChange={(e) => branch && updateBranchContact(branch.id, { phone: e.target.value })} placeholder="e.g. 0803 000 0000" inputMode="tel" />
+      </label>
+      <label className="rcm-field">
+        <span>Company email</span>
+        <input value={profile.email} onChange={(e) => updateReceiptProfile({ email: e.target.value })} placeholder="e.g. info@company.com" />
+      </label>
+      <label className="rcm-field">
+        <span>Motto</span>
+        <input value={profile.motto} onChange={(e) => updateReceiptProfile({ motto: e.target.value })} placeholder="Optional" />
+      </label>
+      <label className="rcm-field">
+        <span>Thank-you message</span>
+        <textarea rows={3} value={profile.thankYou} onChange={(e) => updateReceiptProfile({ thankYou: e.target.value })} />
+      </label>
+    </section>
+  );
 }
 
 export function ReceiptModal({ visit, onClose }: { visit: PatientVisit; onClose: () => void }) {
@@ -57,7 +77,6 @@ export function ReceiptModal({ visit, onClose }: { visit: PatientVisit; onClose:
     options,
     printedAt,
   };
-  const contact = (branch && profile.branches[branch.id]) || { address: "", phone: "" };
   const fileBase = `receipt-${visit.id}-${paper === "a5" ? "a5" : `${paper}mm`}`;
   const paperDef = RECEIPT_PAPERS.find((p) => p.id === paper)!;
 
@@ -78,29 +97,7 @@ export function ReceiptModal({ visit, onClose }: { visit: PatientVisit; onClose:
     logAudit({ category: "Receipts", action: "Receipt printed", record: `${visit.id} · ${visit.patientRef}`, details: `${paperDef.label} · ${formatMoney(visit.paid, branch?.currency ?? "NGN")} paid of ${formatMoney(visit.billed, branch?.currency ?? "NGN")}`, branchId: visit.branchId });
     setBusy("print");
     try {
-      const heightMm = Math.ceil(el.getBoundingClientRect().height / PX_PER_MM) + 2;
-      const size = paper === "a5" ? "A5 portrait" : `${paperDef.widthMm}mm ${heightMm}mm`;
-      const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(fileBase)}</title><link rel="stylesheet" href="${REPORT_FONT_URL}"><style>${RECEIPT_CSS}
-@page{size:${size};margin:0}html,body{margin:0;padding:0;background:#fff}</style></head><body>${el.outerHTML}</body></html>`;
-      const frame = document.createElement("iframe");
-      Object.assign(frame.style, { position: "fixed", right: "0", bottom: "0", width: "0", height: "0", border: "0" });
-      frame.setAttribute("aria-hidden", "true");
-      document.body.appendChild(frame);
-      const w = frame.contentWindow;
-      if (!w) return;
-      w.document.open();
-      w.document.write(html);
-      w.document.close();
-      await new Promise((r) => setTimeout(r, 300));
-      try {
-        await Promise.race([w.document.fonts.ready, new Promise((r) => setTimeout(r, 2000))]);
-      } catch {
-        /* offline: system font, same as preview */
-      }
-      w.addEventListener("afterprint", () => setTimeout(() => frame.remove(), 500), { once: true });
-      setTimeout(() => frame.remove(), 120_000);
-      w.focus();
-      w.print();
+      await printDocument(el, paper, fileBase);
     } finally {
       setBusy(null);
     }
@@ -112,14 +109,7 @@ export function ReceiptModal({ visit, onClose }: { visit: PatientVisit; onClose:
     logAudit({ category: "Receipts", action: "Receipt downloaded (PDF)", record: `${visit.id} · ${visit.patientRef}`, details: paperDef.label, branchId: visit.branchId });
     setBusy("pdf");
     try {
-      const canvas = await capture(el);
-      const { jsPDF } = await import("jspdf");
-      const wMm = paperDef.widthMm;
-      const hMm = (canvas.height / canvas.width) * wMm;
-      const pdf = new jsPDF({ unit: "mm", format: paper === "a5" ? "a5" : [wMm, hMm], orientation: "portrait" });
-      // High-quality JPEG keeps text crisp at print resolution while keeping the file small.
-      pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, wMm, hMm);
-      pdf.save(`${fileBase}.pdf`);
+      await downloadPdf(el, paper, fileBase);
       showToast(`Saved ${fileBase}.pdf`);
     } finally {
       setBusy(null);
@@ -132,12 +122,7 @@ export function ReceiptModal({ visit, onClose }: { visit: PatientVisit; onClose:
     logAudit({ category: "Receipts", action: "Receipt exported (image)", record: `${visit.id} · ${visit.patientRef}`, details: paperDef.label, branchId: visit.branchId });
     setBusy("png");
     try {
-      const canvas = await capture(el);
-      const blob: Blob | null = await new Promise((r) => canvas.toBlob(r, "image/png"));
-      if (blob) {
-        saveFile(`${fileBase}.png`, blob, "image/png");
-        showToast(`Saved ${fileBase}.png — ready to share`);
-      }
+      if (await exportPng(el, fileBase)) showToast(`Saved ${fileBase}.png — ready to share`);
     } finally {
       setBusy(null);
     }
@@ -159,7 +144,7 @@ export function ReceiptModal({ visit, onClose }: { visit: PatientVisit; onClose:
               </span>
               <div>
                 <span>Patient receipt</span>
-                <strong id={titleId}>{visit.patientRef}</strong>
+                <strong id={titleId}>{visit.patientName}</strong>
                 <small>
                   {visit.id} · {balance <= 0 ? "Fully paid" : visit.paid > 0 ? "Part payment" : "Not paid"}
                 </small>
@@ -204,32 +189,7 @@ export function ReceiptModal({ visit, onClose }: { visit: PatientVisit; onClose:
               ))}
             </section>
 
-            <section className="rcm-card">
-              <h3>
-                <i>3</i> Receipt details
-              </h3>
-              <p className="rcm-help">These were not in the legacy records. Fill them in once and they print on every receipt (saved for this session until the database is connected).</p>
-              <label className="rcm-field">
-                <span>{branch?.name} branch address</span>
-                <input value={contact.address} onChange={(e) => branch && updateBranchContact(branch.id, { address: e.target.value })} placeholder={`e.g. Plot 12, … ${branch?.city}`} />
-              </label>
-              <label className="rcm-field">
-                <span>Branch phone</span>
-                <input value={contact.phone} onChange={(e) => branch && updateBranchContact(branch.id, { phone: e.target.value })} placeholder="e.g. 0803 000 0000" inputMode="tel" />
-              </label>
-              <label className="rcm-field">
-                <span>Company email</span>
-                <input value={profile.email} onChange={(e) => updateReceiptProfile({ email: e.target.value })} placeholder="e.g. info@company.com" />
-              </label>
-              <label className="rcm-field">
-                <span>Motto</span>
-                <input value={profile.motto} onChange={(e) => updateReceiptProfile({ motto: e.target.value })} placeholder="Optional" />
-              </label>
-              <label className="rcm-field">
-                <span>Thank-you message</span>
-                <textarea rows={3} value={profile.thankYou} onChange={(e) => updateReceiptProfile({ thankYou: e.target.value })} />
-              </label>
-            </section>
+            <ReceiptDetailsCard step={3} branch={branch} />
           </aside>
 
           {/* ── Preview ── */}

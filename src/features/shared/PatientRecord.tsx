@@ -72,8 +72,8 @@ function PatientRecord({ visit, onClose }: { visit: PatientVisit; onClose: () =>
               <span className="vrd-avatar" aria-hidden="true">
                 <UserRound size={30} />
               </span>
-              <span className="vrd-eyebrow">Patient</span>
-              <strong>{visit.patientRef}</strong>
+              <span className="vrd-eyebrow">Patient · {visit.patientRef}</span>
+              <strong>{visit.patientName}</strong>
               <em>{status}</em>
               <span className="vrd-phone">
                 <Phone size={13} aria-hidden="true" />
@@ -183,8 +183,8 @@ function VisitSlip({ visit }: { visit: PatientVisit }) {
     <div className="vr">
       <section className="vr-top">
         <div className="vr-patient">
-          <span className="vr-label">Patient</span>
-          <strong>{visit.patientRef}</strong>
+          <span className="vr-label">Patient · {visit.patientRef}</span>
+          <strong>{visit.patientName}</strong>
           <small>{visit.isNew ? "New patient · first visit" : "Returning patient"}</small>
           <span className="vr-phone">
             <Phone size={14} aria-hidden="true" />

@@ -36,7 +36,16 @@ export function ReportsHome({ initialBranch }: { initialBranch?: string }) {
           ))}
         </Reveal>
       </section>
-      {open && <ReportBuilder key={open.id} spec={open} initialBranch={initialBranch} onClose={() => go(null)} />}
+      {open && (
+        <ReportBuilder
+          key={`${open.id}|${route.query.get("variant") ?? ""}|${route.query.get("month") ?? ""}`}
+          spec={open}
+          initialBranch={route.query.get("branch") ?? initialBranch}
+          initialVariant={route.query.get("variant")}
+          initialMonth={route.query.get("month")}
+          onClose={() => go(null)}
+        />
+      )}
     </>
   );
 }

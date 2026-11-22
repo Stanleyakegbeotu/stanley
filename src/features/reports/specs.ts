@@ -900,7 +900,7 @@ const PAYMENTS: ReportSpec = {
   guide: "Print every payment received, a payment-method summary, the balances patients paid back, or the list of bills still owed on the end date.",
   variants: [
     { id: "received", label: "Payments received", description: "Every payment: date, patient, type, method and amount." },
-    { id: "methods", label: "Payment methods summary", description: "Totals per method (cash, POS, transfer, HMO)." },
+    { id: "methods", label: "Payment methods summary", description: "Totals per method (cash, POS, transfer)." },
     { id: "recovered", label: "Balances recovered", description: "Older balances patients paid back, and whether each bill is now cleared." },
     { id: "outstanding", label: "Outstanding balances", description: "Every bill still owed on the end date, oldest or largest first.", periodNote: "Balances are shown as they stood at the end date." },
   ],

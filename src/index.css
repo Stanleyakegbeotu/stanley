@@ -10,4 +10,8 @@
 @import "./styles/forms.css";
 @import "./styles/finance.css";
 @import "./styles/reports.css";
+@import "./styles/notifications.css";
+@import "./styles/branch.css";
+@import "./styles/billing.css";
+@import "./styles/settings.css";
 @import "./styles/bands.css";

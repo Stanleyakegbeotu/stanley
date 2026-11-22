@@ -14,7 +14,7 @@ import { getBranch } from "@/data/company";
 import { DATA_START, TODAY, isoDate } from "@/data/demo/generator";
 import { AUDIT_CATEGORIES, useAuditLog, type AuditEntry } from "@/services/audit";
 import { formatCount } from "@/shared/format";
-import { Badge, Button, EmptyState, SearchInput, SelectMenu } from "@/shared/ui/controls";
+import { Badge, Button, EmptyState, SearchInput, Segmented, SelectMenu } from "@/shared/ui/controls";
 import { Modal } from "@/shared/ui/Modal";
 import { Pagination } from "@/shared/ui/Pagination";
 import { SummaryChips } from "@/features/dashboard/ExpensesPatients";
@@ -50,8 +50,14 @@ function usePaging<T>(rows: T[], initial = 25) {
 
 /* ─────────────── Audit Log ─────────────── */
 
-export function AuditLogView({ scope }: { scope: string[] | null }) {
+/**
+ * `branchMode` (branch workspace Audit): the branch's own entries, plus — unless
+ * switched off — company-wide changes that apply to it (catalogue prices,
+ * branding…), tagged "Company-wide".
+ */
+export function AuditLogView({ scope, branchMode = false }: { scope: string[] | null; branchMode?: boolean }) {
   const log = useAuditLog();
+  const [companyWide, setCompanyWide] = useState(true);
   const [q, setQ] = useState("");
   const [category, setCategory] = useState("all");
   const [user, setUser] = useState("all");
@@ -59,7 +65,7 @@ export function AuditLogView({ scope }: { scope: string[] | null }) {
   const [to, setTo] = useState("");
   const [open, setOpen] = useState<AuditEntry | null>(null);
 
-  const inScope = log.filter((e) => !scope || !e.branchId || scope.includes(e.branchId));
+  const inScope = log.filter((e) => !scope || (!e.branchId ? !branchMode || companyWide : scope.includes(e.branchId)));
   const users = [...new Set(inScope.map((e) => e.user))];
   const term = q.trim().toLowerCase();
   const rows = inScope.filter((e) => {
@@ -122,6 +128,20 @@ export function AuditLogView({ scope }: { scope: string[] | null }) {
           <span>To</span>
           <input type="date" value={to} min={from || isoDate(DATA_START)} onChange={(e) => (setTo(e.target.value), paging.reset())} />
         </label>
+        {branchMode && (
+          <Segmented
+            value={companyWide ? "all" : "branch"}
+            label="Which changes"
+            options={[
+              { value: "all", label: "Branch + company-wide" },
+              { value: "branch", label: "This branch only" },
+            ]}
+            onChange={(v: string) => {
+              setCompanyWide(v === "all");
+              paging.reset();
+            }}
+          />
+        )}
         {filtered && (
           <button
             type="button"
@@ -179,6 +199,7 @@ export function AuditLogView({ scope }: { scope: string[] | null }) {
                     </td>
                     <td>
                       <Badge tone={e.category === "Trash" ? "warn" : e.category === "System" ? "neutral" : "brand"}>{e.category}</Badge>
+                      {branchMode && !e.branchId && <small className="ep-sub">Company-wide</small>}
                     </td>
                     <td className="al-action">{e.action}</td>
                     <td className="al-record">{e.record}</td>
@@ -240,7 +261,8 @@ export function AuditLogView({ scope }: { scope: string[] | null }) {
 
 export const daysLeft = (t: TrashItem) => Math.max(0, TRASH_RETENTION_DAYS - Math.floor((Date.now() - new Date(t.deletedAt).getTime()) / DAY));
 
-export function TrashLogView({ scope }: { scope: string[] | null }) {
+/** `readOnly`: branch staff can see what was deleted, but only managers and admins restore or delete. */
+export function TrashLogView({ scope, readOnly = false }: { scope: string[] | null; readOnly?: boolean }) {
   const { trash, restoreFromTrash, purgeFromTrash, showToast } = useApp();
   const [q, setQ] = useState("");
   const [kind, setKind] = useState<"all" | TrashItem["kind"]>("all");
@@ -303,7 +325,7 @@ export function TrashLogView({ scope }: { scope: string[] | null }) {
                 <th>Deleted on</th>
                 <th>Reason</th>
                 <th>Expires in</th>
-                <th className="right">Actions</th>
+                {!readOnly && <th className="right">Actions</th>}
               </tr>
             </thead>
             <tbody>
@@ -334,6 +356,7 @@ export function TrashLogView({ scope }: { scope: string[] | null }) {
                           {left} day{left === 1 ? "" : "s"}
                         </Badge>
                       </td>
+                      {!readOnly && (
                       <td className="right">
                         <div className="al-actions">
                           <Button
@@ -350,6 +373,7 @@ export function TrashLogView({ scope }: { scope: string[] | null }) {
                           </Button>
                         </div>
                       </td>
+                      )}
                     </tr>
                   );
                 })
@@ -360,7 +384,7 @@ export function TrashLogView({ scope }: { scope: string[] | null }) {
         {paging.pager("records")}
       </div>
       <p className="lg-muted al-note">
-        <Info size={14} /> Restoring puts the record back exactly as it was. Deleting permanently cannot be undone. Every action here is recorded in the Audit Log.
+        <Info size={14} /> {readOnly ? "Only the Branch Manager or Company Admin can restore or permanently delete records. " : ""}Restoring puts the record back exactly as it was. Deleting permanently cannot be undone. Every action here is recorded in the Audit Log.
       </p>
 
       <Modal

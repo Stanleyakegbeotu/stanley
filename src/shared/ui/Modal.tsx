@@ -27,6 +27,10 @@ export function Modal({ open, onClose, title, description, wide, xl, icon: Icon,
   const titleId = useId();
   const box = useRef<HTMLDivElement>(null);
   const opener = useRef<HTMLElement | null>(null);
+  // Latest onClose without re-running the open effect on every render (that re-focused the first
+  // control and scrolled the dialog back to the top — undoing scroll-to-error).
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
@@ -34,18 +38,19 @@ export function Modal({ open, onClose, title, description, wide, xl, icon: Icon,
     const onKey = (e: KeyboardEvent) => {
       // Only the top-most dialog layer reacts, so Escape never closes a stack at once.
       const layers = document.querySelectorAll(".modal-layer");
-      if (e.key === "Escape" && layers[layers.length - 1] === box.current?.parentElement) onClose();
+      if (e.key === "Escape" && layers[layers.length - 1] === box.current?.parentElement) closeRef.current();
     };
     document.addEventListener("keydown", onKey);
     const id = window.requestAnimationFrame(() => {
-      box.current?.querySelector<HTMLElement>("input, select, textarea, button:not([data-close])")?.focus();
+      // Focus the first control only when nothing inside is focused yet (e.g. an error field already is).
+      if (!box.current?.contains(document.activeElement)) box.current?.querySelector<HTMLElement>("input, select, textarea, button:not([data-close])")?.focus({ preventScroll: true });
     });
     return () => {
       document.removeEventListener("keydown", onKey);
       window.cancelAnimationFrame(id);
       opener.current?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   return createPortal(
     <AnimatePresence>

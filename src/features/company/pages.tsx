@@ -1,17 +1,14 @@
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowLeft, ArrowRight, Bell, Building2, Check, ChevronRight, Download, FileText, Hospital, Lock, MapPin, Palette, Plus, Stethoscope, Upload, FlaskConical, ChartLine, Wallet, Users, UserRound } from "lucide-react";
+import { ArrowLeft, ArrowRight, Bell, Building2, ChevronRight, Download, Hospital, Lock, MapPin, Plus, Stethoscope, FlaskConical, ChartLine, Wallet } from "lucide-react";
 import { TRASH_RETENTION_DAYS, useApp } from "@/app/AppState";
-import { THEMES } from "@/app/themes";
-import { ACTIVE_BRANCHES, BRANCHES, COMPANY, NOT_ON_RECORD, SERVICES, getBranch, servicePrice } from "@/data/company";
+import { ACTIVE_BRANCHES, BRANCHES, NOT_ON_RECORD, getBranch } from "@/data/company";
 import { HEADCOUNT } from "@/data/demo/records";
 import type { Currency } from "@/data/types";
 import { AnimatedPage, CountUp, Reveal, useMotionPreset } from "@/shared/motion";
 import { formatCount, formatMoney, moneyEntries } from "@/shared/format";
 import { Button, DemoChip, PageHeader, Row, Table, Tabs } from "@/shared/ui/controls";
 import { AreaLineChart } from "@/shared/ui/charts";
-import { Modal } from "@/shared/ui/Modal";
-import { LogoMark } from "@/shell/Logo";
 import { CurrencyTabs, useCurrencyTab } from "@/features/dashboard/FinancialAnalytics";
 import { rangeText } from "@/features/dashboard/WelcomeBanner";
 import { agentRanking, byBranch, doctorRanking, hospitalRanking, periodLabel, resolveBranchIds, resolveRange, serviceRanking, summarize, trend } from "@/services/analytics";
@@ -54,15 +51,11 @@ export function BranchesPage() {
       <PageHero
         eyebrow="Company structure"
         title="Branches"
+        stats="branches"
         actions={
-          <>
-            <button type="button" className="ph-btn ghost">
-              <Download size={17} /> Export
-            </button>
-            <button type="button" className="ph-btn solid" onClick={() => setAdding(true)}>
-              <Plus size={18} /> Add branch
-            </button>
-          </>
+          <button type="button" className="ph-btn solid" onClick={() => setAdding(true)}>
+            <Plus size={18} /> Add branch
+          </button>
         }
       />
 
@@ -231,6 +224,7 @@ export function InventoryPage() {
         <PageHero
           eyebrow={`Service catalogue · ${scopeLabel}`}
           title="Inventory"
+          stats="inventory"
           actions={
             <button type="button" className="ph-btn solid" onClick={() => openAdd()}>
               <Plus size={18} /> Add service
@@ -262,6 +256,7 @@ export function StaffPage() {
         eyebrow={`Staff management · ${branch ? `${branch.name} branch` : "All branches"}`}
         title="Staff Management"
         period={false}
+        stats="staff"
         actions={
           branch && (
             <button type="button" className="ph-btn solid" onClick={() => setAdding((a) => ({ session: (a?.session ?? 0) + 1 }))}>
@@ -376,6 +371,7 @@ export function PRPage() {
       <PageHero
         eyebrow={`Referral network · ${branch ? `${branch.name} branch` : "All branches"}`}
         title="PR / Hospital Management"
+        stats="pr"
         actions={
           branch && (
             <button type="button" className="ph-btn solid" onClick={() => setAdding((n) => (n ?? 0) + 1)}>
@@ -492,7 +488,7 @@ export function PatientsPage() {
 
   return (
     <AnimatedPage>
-      <PageHero eyebrow={`Patient records · ${branch ? `${branch.name} branch` : "All branches"}`} title="Patients" period={false} />
+      <PageHero eyebrow={`Patient records · ${branch ? `${branch.name} branch` : "All branches"}`} title="Patients" period={false} stats="patients" />
       {!branch ? (
         <PatientsBranchPicker onPick={(id) => navigate(withQuery(`/patients?branch=${id}`))} />
       ) : (
@@ -510,7 +506,7 @@ export function PatientsPage() {
               </span>
             </nav>
           )}
-          <PatientDirectory key={branch.id} branchId={branch.id} initialQuery={q} />
+          <PatientDirectory key={`${branch.id}|${route.query.get("visit") ?? ""}`} branchId={branch.id} initialQuery={q} initialVisitId={route.query.get("visit")} />
         </>
       )}
     </AnimatedPage>
@@ -598,7 +594,7 @@ export function FinancePage() {
 
   return (
     <AnimatedPage>
-      <PageHero eyebrow={`Company finance · ${branch ? `${branch.name} branch` : "All branches"}`} title="Finance & Expenses" period={false} />
+      <PageHero eyebrow={`Company finance · ${branch ? `${branch.name} branch` : "All branches"}`} title="Finance & Expenses" period={false} stats="finance" />
       {!branch ? (
         <FinanceBranchPicker onPick={(id) => navigate(`/finance?branch=${id}`)} />
       ) : (
@@ -616,7 +612,7 @@ export function FinancePage() {
               </span>
             </nav>
           )}
-          <FinanceWorkspace key={`${branch.id}|${tab ?? ""}`} branchId={branch.id} initialLog={initialLog} focusOutstanding={tab === "outstanding"} />
+          <FinanceWorkspace key={`${branch.id}|${tab ?? ""}|${route.query.get("day") ?? ""}`} branchId={branch.id} initialLog={initialLog} focusOutstanding={tab === "outstanding"} initialDay={route.query.get("day")} />
         </>
       )}
     </AnimatedPage>
@@ -823,221 +819,9 @@ export function ReportsPage() {
   const { scope, scopeLabel } = useScope();
   return (
     <AnimatedPage>
-      <PageHero eyebrow={`Reports & exports · ${scopeLabel}`} title="Reports" period={false} />
+      <PageHero eyebrow={`Reports & exports · ${scopeLabel}`} title="Reports" period={false} stats="reports" />
       <ReportsHome initialBranch={scope?.[0]} />
     </AnimatedPage>
-  );
-}
-
-/* ─────────────── Settings ─────────────── */
-const SETTINGS_SECTIONS = [
-  { id: "company", label: "Company profile", icon: Building2 },
-  { id: "branding", label: "Logo & branding", icon: Upload },
-  { id: "appearance", label: "Appearance", icon: Palette },
-  { id: "profile", label: "My profile", icon: UserRound },
-  { id: "permissions", label: "Users & permissions", icon: Users },
-  { id: "documents", label: "Receipts & documents", icon: FileText },
-];
-
-export function AppearanceSettings() {
-  const { theme, setTheme } = useApp();
-  const m = useMotionPreset();
-  return (
-    <>
-      <p className="hint" style={{ marginTop: 0 }}>
-        The selected theme applies to the entire application — sidebar, header, dashboards, pages, cards, dropdowns and dialogs. STANLEY is light-mode only.
-      </p>
-      <motion.div className="theme-cards" variants={m.staggerGroup} initial="hidden" animate="visible">
-        {THEMES.map((t) => (
-          <motion.button key={t.id} className={`theme-card ${theme === t.id ? "is-active" : ""}`} variants={m.revealItem} whileHover={m.cardHover} onClick={() => setTheme(t.id)} aria-pressed={theme === t.id}>
-            <span className="theme-preview" aria-hidden="true">
-              <i style={{ background: t.sidebar }} />
-              <span>
-                <b style={{ background: t.accent }} />
-                <em />
-                <em />
-              </span>
-            </span>
-            <span className="theme-name">
-              {t.name}
-              {theme === t.id && <Check size={16} />}
-            </span>
-          </motion.button>
-        ))}
-      </motion.div>
-    </>
-  );
-}
-
-export function SettingsPage() {
-  const { route, navigate, user } = useApp();
-  const section = route.query.get("section") ?? "company";
-  const current = SETTINGS_SECTIONS.find((s) => s.id === section) ?? SETTINGS_SECTIONS[0];
-  const [receipt, setReceipt] = useState(false);
-  return (
-    <AnimatedPage>
-      <PageHeader eyebrow="Company configuration" title="Settings" description="Company identity, branding, appearance and access." />
-      <Reveal className="settings-layout">
-        <nav className="settings-nav" aria-label="Settings sections">
-          {SETTINGS_SECTIONS.map((s) => {
-            const Icon = s.icon;
-            return (
-              <button key={s.id} className={s.id === current.id ? "is-active" : ""} onClick={() => navigate(`/settings?section=${s.id}`)} aria-current={s.id === current.id ? "page" : undefined}>
-                <Icon size={17} />
-                {s.label}
-                <ChevronRight size={15} className="chev" />
-              </button>
-            );
-          })}
-        </nav>
-        <div className="card card-pad settings-content">
-          <div className="card-head">
-            <div>
-              <h3>{current.label}</h3>
-              <p>Changes apply company-wide.</p>
-            </div>
-            {current.id !== "appearance" && <Button size="sm">Save changes</Button>}
-          </div>
-          {current.id === "appearance" && <AppearanceSettings />}
-          {current.id === "company" && (
-            <div className="form-grid">
-              <label className="field">
-                Company name
-                <input defaultValue={COMPANY.name} />
-              </label>
-              <label className="field">
-                Company owner
-                <input defaultValue={COMPANY.owner} />
-              </label>
-              <label className="field">
-                Primary country
-                <input defaultValue="Nigeria" />
-              </label>
-              <label className="field">
-                Operating currencies
-                <input defaultValue="NGN (each currency is always kept separate)" readOnly />
-              </label>
-              <label className="field full">
-                Registered address
-                <textarea defaultValue="" placeholder={`${NOT_ON_RECORD} — not included in the legacy export`} />
-              </label>
-            </div>
-          )}
-          {current.id === "branding" && (
-            <div className="upload-card">
-              <span className="sb-logo" style={{ width: 72, height: 72, borderRadius: 20 }}>
-                <LogoMark />
-              </span>
-              <div>
-                <h3 style={{ margin: 0 }}>Official company logo</h3>
-                <p className="hint">PNG · used across all branches, receipts and company documents.</p>
-                <div className="toolbar">
-                  <Button variant="secondary" size="sm">
-                    <Upload size={15} /> Replace logo
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => setReceipt(true)}>
-                    Preview receipt
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
-          {current.id === "profile" && (
-            <div className="form-grid">
-              <label className="field">
-                Full name
-                <input defaultValue={user.name} />
-              </label>
-              <label className="field">
-                Role
-                <input defaultValue={user.role} readOnly />
-              </label>
-              <label className="field full">
-                Email
-                <input defaultValue={user.email} />
-              </label>
-            </div>
-          )}
-          {current.id === "permissions" && (
-            <Table headers={["Role", "Workspace", "Access"]} label="Roles">
-              {[
-                ["Company Admin", "Company administration + every branch", "Full access, approvals, configuration"],
-                ["Branch Manager", "Own branch operations", "Billing, staff, expenses, branch settings"],
-                ["Billing Officer", "Own branch operations", "Billing, drafts, records"],
-                ["Lab Scientist", "Own branch operations", "Records and results"],
-              ].map((r) => (
-                <Row key={r[0]}>
-                  <td>
-                    <strong>{r[0]}</strong>
-                  </td>
-                  <td>{r[1]}</td>
-                  <td>{r[2]}</td>
-                </Row>
-              ))}
-            </Table>
-          )}
-          {current.id === "documents" && (
-            <div className="receipt-setting">
-              <div>
-                <strong>Automatic receipt branding</strong>
-                <p className="hint" style={{ margin: "4px 0 0" }}>
-                  Company and branch details are added to every generated receipt.
-                </p>
-              </div>
-              <Button variant="secondary" size="sm" onClick={() => setReceipt(true)}>
-                Preview receipt
-              </Button>
-            </div>
-          )}
-        </div>
-      </Reveal>
-      <ReceiptPreview open={receipt} onClose={() => setReceipt(false)} />
-    </AnimatedPage>
-  );
-}
-
-/** Sample lines use real catalogue items and their actual prices (FULL BLOOD COUNT, PELVIC ULTRASOUND). */
-const RECEIPT_SAMPLE = [1, 125].map((id) => SERVICES.find((s) => s.id === id)).filter((s): s is (typeof SERVICES)[number] => !!s);
-
-export function ReceiptPreview({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const b = BRANCHES[0];
-  const total = RECEIPT_SAMPLE.reduce((sum, s) => sum + servicePrice(s, b.currency), 0);
-  return (
-    <Modal open={open} onClose={onClose} wide title="Receipt branding preview" description="Sample receipt — real catalogue items and prices, no patient data" footer={<Button onClick={onClose}>Done</Button>}>
-      <div className="receipt">
-        <div className="receipt-head">
-          <span className="sb-logo" style={{ width: 52, height: 52 }}>
-            <LogoMark />
-          </span>
-          <div>
-            <strong>{COMPANY.name}</strong>
-            <span>
-              {b.name} Branch ({b.code})
-            </span>
-          </div>
-        </div>
-        <div className="receipt-title">
-          <h2>Payment receipt</h2>
-          <span className="mono">SAMPLE</span>
-        </div>
-        <Table headers={["Diagnostic service", "Qty", { label: "Amount", align: "right" }]}>
-          {RECEIPT_SAMPLE.map((s) => (
-            <Row key={s.id}>
-              <td>{s.name}</td>
-              <td>1</td>
-              <td className="right">{formatMoney(servicePrice(s, b.currency), b.currency)}</td>
-            </Row>
-          ))}
-        </Table>
-        <div className="receipt-total">
-          <span>Total paid</span>
-          <strong>{formatMoney(total, b.currency)}</strong>
-        </div>
-        <p className="hint" style={{ textAlign: "center", margin: 0 }}>
-          Thank you for choosing {COMPANY.name}. Powered by STANLEY.
-        </p>
-      </div>
-    </Modal>
   );
 }
 
@@ -1046,7 +830,7 @@ export function AuditPage() {
   const { scope, scopeLabel } = useScope();
   return (
     <AnimatedPage>
-      <PageHero eyebrow={`Read-only record · ${scopeLabel}`} title="Audit Log" period={false} />
+      <PageHero eyebrow={`Read-only record · ${scopeLabel}`} title="Audit Log" period={false} stats="audit" />
       <AuditLogView scope={scope} />
     </AnimatedPage>
   );
@@ -1056,7 +840,7 @@ export function TrashPage() {
   const { scope, scopeLabel } = useScope();
   return (
     <AnimatedPage>
-      <PageHero eyebrow={`Recoverable for ${TRASH_RETENTION_DAYS} days · ${scopeLabel}`} title="Trash" period={false} />
+      <PageHero eyebrow={`Recoverable for ${TRASH_RETENTION_DAYS} days · ${scopeLabel}`} title="Trash" period={false} stats="trash" />
       <TrashLogView scope={scope} />
     </AnimatedPage>
   );

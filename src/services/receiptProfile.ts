@@ -16,22 +16,44 @@ export interface ReceiptProfile {
   branches: Record<string, { address: string; phone: string }>;
 }
 
-let state: ReceiptProfile = {
+const KEY = "stanley.receipt.v1";
+const DEFAULTS: ReceiptProfile = {
   motto: "",
   email: "",
   thankYou: `Thank you for choosing ${COMPANY.name}. We wish you good health — please keep this receipt for your records.`,
   branches: {},
 };
+
+// Saved on this device (guarded) so receipt details survive a refresh — offline-first.
+function load(): ReceiptProfile {
+  try {
+    const raw = window.localStorage.getItem(KEY);
+    return raw ? { ...DEFAULTS, ...(JSON.parse(raw) as Partial<ReceiptProfile>) } : DEFAULTS;
+  } catch {
+    return DEFAULTS;
+  }
+}
+function save() {
+  try {
+    window.localStorage.setItem(KEY, JSON.stringify(state));
+  } catch {
+    /* storage unavailable — the change still applies for this session */
+  }
+}
+
+let state: ReceiptProfile = load();
 const listeners = new Set<() => void>();
 
 export function updateReceiptProfile(patch: Partial<Omit<ReceiptProfile, "branches">>) {
   state = { ...state, ...patch };
+  save();
   listeners.forEach((l) => l());
 }
 
 export function updateBranchContact(branchId: string, patch: Partial<{ address: string; phone: string }>) {
   const cur = state.branches[branchId] ?? { address: "", phone: "" };
   state = { ...state, branches: { ...state.branches, [branchId]: { ...cur, ...patch } } };
+  save();
   listeners.forEach((l) => l());
 }
 
