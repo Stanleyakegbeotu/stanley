@@ -189,13 +189,22 @@ export function AuditLogView({ scope, branchMode = false }: { scope: string[] | 
               ) : (
                 paging.visible.map((e) => (
                   <tr key={e.id} className="pr-row" tabIndex={0} onClick={() => setOpen(e)} onKeyDown={(k) => (k.key === "Enter" || k.key === " ") && (k.preventDefault(), setOpen(e))} aria-label={`${e.action} — open details`}>
-                    <td className="num ep-nowrap">
-                      {when(e.at)}
-                      <small className="ep-sub mono">{e.id}</small>
+                    <td className="al-when">
+                      <b>{e.at.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</b>
+                      <small>
+                        {e.at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} · <span className="mono">{e.id}</span>
+                      </small>
                     </td>
                     <td>
-                      <strong>{e.user}</strong>
-                      <small className="ep-sub">{e.role}</small>
+                      <span className="al-person">
+                        <span className="al-avatar" aria-hidden="true">
+                          {e.user === "System" ? "S" : e.user.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase()}
+                        </span>
+                        <span className="al-person-text">
+                          <b>{e.user}</b>
+                          <small>{e.role}</small>
+                        </span>
+                      </span>
                     </td>
                     <td>
                       <Badge tone={e.category === "Trash" ? "warn" : e.category === "System" ? "neutral" : "brand"}>{e.category}</Badge>
@@ -214,7 +223,7 @@ export function AuditLogView({ scope, branchMode = false }: { scope: string[] | 
         {paging.pager("entries")}
       </div>
       <p className="lg-muted al-note">
-        <Info size={14} /> Changes are recorded as they happen and cannot be edited or removed. Kept for this session until the database is connected.
+        <Info size={14} /> Changes are recorded as they happen and cannot be edited or removed. Saved on this device until the database is connected.
       </p>
 
       <Modal
@@ -259,6 +268,8 @@ export function AuditLogView({ scope, branchMode = false }: { scope: string[] | 
 
 /* ─────────────── Trash ─────────────── */
 
+const RESTORED_TO: Record<TrashItem["kind"], string> = { staff: "Staff Management", agent: "PR Management", expense: "Expenses", draft: "Drafts", bill: "Records", service: "Inventory" };
+
 export const daysLeft = (t: TrashItem) => Math.max(0, TRASH_RETENTION_DAYS - Math.floor((Date.now() - new Date(t.deletedAt).getTime()) / DAY));
 
 /** `readOnly`: branch staff can see what was deleted, but only managers and admins restore or delete. */
@@ -277,8 +288,8 @@ export function TrashLogView({ scope, readOnly = false }: { scope: string[] | nu
       <SummaryChips
         items={[
           { label: "In trash", icon: Trash2, value: formatCount(inScope.length), caption: `Kept ${TRASH_RETENTION_DAYS} days, then removed for good` },
-          { label: "Staff", icon: UserRound, value: formatCount(inScope.filter((t) => t.kind === "staff").length), caption: "Deleted staff records" },
-          { label: "PR agents", icon: ClipboardList, value: formatCount(inScope.filter((t) => t.kind === "agent").length), caption: "Agents added in the app" },
+          { label: "Bills & drafts", icon: ClipboardList, value: formatCount(inScope.filter((t) => t.kind === "bill" || t.kind === "draft" || t.kind === "expense").length), caption: "Bills, unfinished bills and expenses" },
+          { label: "People & catalogue", icon: UserRound, value: formatCount(inScope.filter((t) => t.kind === "staff" || t.kind === "agent" || t.kind === "service").length), caption: "Staff, PR agents and services" },
           { label: "Expiring soon", icon: CalendarDays, value: formatCount(inScope.filter((t) => daysLeft(t) <= 7).length), caption: "7 days or less left" },
         ]}
       />
@@ -298,8 +309,12 @@ export function TrashLogView({ scope, readOnly = false }: { scope: string[] | nu
           className="select-btn inv-sort"
           options={[
             { value: "all", label: "All types" },
+            { value: "bill", label: "Bills" },
+            { value: "draft", label: "Unfinished bills (drafts)" },
+            { value: "expense", label: "Expenses" },
             { value: "staff", label: "Staff" },
             { value: "agent", label: "PR agents" },
+            { value: "service", label: "Services" },
           ]}
           onChange={(v: "all" | TrashItem["kind"]) => {
             setKind(v);
@@ -333,7 +348,7 @@ export function TrashLogView({ scope, readOnly = false }: { scope: string[] | nu
                 <tr>
                   <td colSpan={8}>
                     <EmptyState title={inScope.length ? "No deleted records match these filters" : "Trash is empty"}>
-                      {inScope.length ? undefined : "Deleted staff and app-added PR agents appear here for 30 days so they can be restored. Records from the legacy baseline can never be deleted."}
+                      {inScope.length ? undefined : "Nothing in STANLEY is deleted outright: bills, unfinished bills, expenses, staff, app-added PR agents and services come here first and can be restored for 30 days. Records from the legacy baseline can never be deleted."}
                     </EmptyState>
                   </td>
                 </tr>
@@ -344,7 +359,7 @@ export function TrashLogView({ scope, readOnly = false }: { scope: string[] | nu
                     <tr key={t.id}>
                       <td>
                         <strong>{t.name}</strong>
-                        <small className="ep-sub mono">{t.staff?.id ?? (t.agent ? `#${t.agent.id}` : t.id)}</small>
+                        <small className="ep-sub mono">{t.staff?.id ?? t.expense?.id ?? t.bill?.patient.patientId ?? (t.draft ? t.draft.patient.existingId ?? "Unfinished bill" : null) ?? (t.service ? `Service #${t.service.id}` : null) ?? (t.agent ? `#${t.agent.id}` : t.id)}</small>
                       </td>
                       <td>{t.type}</td>
                       <td>{branchName(t.branchId)}</td>
@@ -363,7 +378,7 @@ export function TrashLogView({ scope, readOnly = false }: { scope: string[] | nu
                             size="sm"
                             onClick={() => {
                               restoreFromTrash(t.id);
-                              showToast(`${t.name} restored`);
+                              showToast(`${t.name} restored${RESTORED_TO[t.kind] ? ` — back in ${RESTORED_TO[t.kind]}` : ""}`);
                             }}
                           >
                             <RotateCcw size={14} /> Restore

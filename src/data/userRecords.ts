@@ -9,7 +9,7 @@
  * for the current session. When Supabase/SQLite is connected, persist this
  * collection (and only this collection) — the baseline needs no seeding.
  */
-import { LEGACY_PR_AGENTS, type LegacyPrAgent } from "./legacy";
+import { LEGACY_BRANCH_ID, LEGACY_PR_AGENTS, type LegacyPrAgent } from "./legacy";
 
 /** User records start well above every legacy id so the two can never collide. */
 export const USER_ID_START = 1_000_000;
@@ -145,13 +145,17 @@ export const STAFF_STATUSES: readonly StaffStatus[] = ["Active", "On leave", "Su
 /** The branch head. Each branch has at most one active manager; every other staff member reports to them. */
 export const MANAGER_ROLE = "Branch Manager";
 
+/**
+ * STANLEY's only staff roles (owner, 2026-11-22). The system runs branch
+ * operations, billing and PR-agent management — so its users are the Branch
+ * Manager and the front-desk attendants. Everyone else at a branch (lab,
+ * imaging, finance, security, drivers…) is managed by the manager outside the
+ * app; e.g. reports for an accountant are created and printed by the manager.
+ */
+export const FRONT_DESK_ROLE = "Front Desk";
 export const STAFF_ROLES: readonly { value: string; access: string; permissions: string[] }[] = [
-  { value: MANAGER_ROLE, access: "Runs the branch: billing, staff, expenses and settings", permissions: ["Register patients and create bills", "Approve expenses", "Manage branch staff", "Branch reports and settings"] },
-  { value: "Front Desk", access: "Patient registration and billing", permissions: ["Register patients", "Create bills and take payments", "Print receipts"] },
-  { value: "Laboratory Scientist", access: "Lab orders and results", permissions: ["View lab orders", "Enter and release lab results"] },
-  { value: "Radiographer", access: "Imaging orders and reports", permissions: ["View imaging orders", "Upload imaging reports"] },
-  { value: "Sonographer", access: "Ultrasound orders and reports", permissions: ["View ultrasound orders", "Upload scan reports"] },
-  { value: "Accountant", access: "Payments, expenses and reports", permissions: ["Record expenses", "View payments and balances", "Financial reports"] },
+  { value: MANAGER_ROLE, access: "Runs the branch: billing, PR agents, staff, expenses, reports and settings", permissions: ["Register patients and create bills", "Change prices and give discounts", "Approve expenses and balances", "Manage front-desk staff", "Manage PR agents and hospitals", "Every branch report", "Branch settings, audit and trash"] },
+  { value: FRONT_DESK_ROLE, access: "Front-desk attendant: patients, billing and payments", permissions: ["Register patients and create bills", "Take payments and print receipts", "Save and continue drafts", "Record expenses (approved by the manager)", "Payment, balance and price-list reports"] },
 ];
 
 export const EMPLOYMENT_TYPES: readonly string[] = ["Full-time", "Part-time", "Contract", "Locum"];
@@ -169,9 +173,51 @@ export interface StaffRecord {
   startDate: string;
   address?: string;
   notes?: string;
+  /** Default profile photo (URL). The person's own upload in Settings replaces it. */
+  photo?: string;
+  /** Assignment history: transfers, role and status changes (newest first). */
+  history?: { at: string; by: string; action: string }[];
   createdAt: string;
   updatedAt?: string;
 }
+
+/**
+ * MOCK STAFF (owner request, 2026-11-22; trimmed to the manager + 3) — a sample team for the Abuja branch so
+ * Staff Management (branch and company admin) isn't empty and each role's
+ * workspace can be tried with "Switch account" (e.g. the Front Desk dashboard).
+ * Not real people: no staff were in the legacy export. Emails use the reserved
+ * example.com domain and phone numbers are left blank rather than invented.
+ * The manager uses the same name as the placeholder manager, so the branch
+ * dashboard greeting is unchanged.
+ */
+const MOCK_NOTE = "Sample staff record (mock data) — replace with the real team.";
+/** Bundled sample photo (works offline, and from a sub-path / file://). */
+export const mockPhoto = (slug: string) => `${import.meta.env.BASE_URL}mock-photos/${slug}.jpg`;
+const MOCK_CREATED = "2026-11-22T08:00:00.000Z";
+export const MOCK_STAFF: readonly StaffRecord[] = Object.freeze(
+  (
+    [
+      ["STF-0001", "Chioma Okafor", MANAGER_ROLE, "Active", "Full-time", "2023-02-01"],
+      ["STF-0002", "Amina Bello", "Front Desk", "Active", "Full-time", "2024-03-11"],
+      ["STF-0003", "Ngozi Eze", "Front Desk", "Active", "Full-time", "2023-09-18"],
+      ["STF-0004", "Emeka Nwosu", "Front Desk", "Active", "Part-time", "2023-05-22"],
+    ] as const
+  ).map(([id, name, role, status, employment, startDate]) => ({
+    id,
+    name,
+    role,
+    branchId: LEGACY_BRANCH_ID,
+    status: status as StaffStatus,
+    email: `${name.toLowerCase().replace(/\s+/g, ".")}@example.com`,
+    phone: "",
+    employment,
+    startDate,
+    notes: MOCK_NOTE,
+    // Stock headshots (Pexels, see public/mock-photos/CREDITS.md) so the demo shows profile photos.
+    photo: mockPhoto(name.toLowerCase().replace(/\s+/g, "-")),
+    createdAt: MOCK_CREATED,
+  })),
+);
 
 export const isManager = (s: Pick<StaffRecord, "role">) => s.role === MANAGER_ROLE;
 

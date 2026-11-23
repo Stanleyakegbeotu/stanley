@@ -52,6 +52,7 @@ import { PAPER_LABEL, paperName, paperPx, savePdf, saveFile, tableRowCount, toCs
 import { AllPages, PageView, usePagination, type Page } from "./ReportPages";
 import { REPORT_CSS, REPORT_FONT_URL } from "./reportCss";
 import type { ReportParams, ReportSpec } from "./specs";
+import { setReportPreparer } from "./specs";
 
 type Preset = "today" | "week" | "month" | "lastMonth" | "year" | "custom";
 type StepId = "type" | "period" | "branch" | "content" | "paper" | "review";
@@ -175,15 +176,24 @@ export function ReportBuilder({
   initialVariant,
   initialMonth,
   onClose,
+  lockedBranch,
+  maxDays,
 }: {
   spec: ReportSpec;
   initialBranch?: string;
+  /** Longest period this person may report on (front desk: one month). */
+  maxDays?: number;
+  /** Branch workspace: the report always covers this branch (no "All branches"). */
+  lockedBranch?: string;
   /** Deep links (e.g. a commission-payout notification). */
   initialVariant?: string | null;
   initialMonth?: string | null;
   onClose: () => void;
 }) {
-  const { agents, showToast } = useApp();
+  const { agents, showToast, user } = useApp();
+  // Net profit / margin only for the Company Admin (owner rule).
+  const hideProfit = user.kind !== "admin";
+  setReportPreparer(user.name, user.role);
   const m = useMotionPreset();
   const titleId = useId();
   const box = useRef<HTMLDivElement>(null);
@@ -196,7 +206,7 @@ export function ReportBuilder({
   const [to, setTo] = useState(isoDate(TODAY));
   // Month picker (monthly reports such as the commission payout): "YYYY-MM"; defaults to the last full month.
   const [month, setMonth] = useState(() => (initialMonth && /^\d{4}-\d{2}$/.test(initialMonth) ? initialMonth : null) ?? monthKeyOf(TODAY.getMonth() > DATA_START.getMonth() || TODAY.getFullYear() > DATA_START.getFullYear() ? new Date(TODAY.getFullYear(), TODAY.getMonth() - 1, 1) : TODAY));
-  const [branch, setBranch] = useState(initialBranch ?? "all");
+  const [branch, setBranch] = useState(lockedBranch ?? initialBranch ?? "all");
   const [options, setOptions] = useState<Record<string, boolean>>(() => Object.fromEntries((spec.options ?? []).map((o) => [o.id, o.default])));
   const [columns, setColumns] = useState<Record<string, string[]>>(() => Object.fromEntries(Object.entries(spec.columns ?? {}).map(([v, defs]) => [v, defs.filter((d) => d.default).map((d) => d.id)])));
   const [selects, setSelects] = useState<Record<string, string>>(() => Object.fromEntries((spec.selects ?? []).map((s) => [s.id, s.default])));
@@ -222,7 +232,13 @@ export function ReportBuilder({
   const v = spec.variants.find((x) => x.id === variant)!;
   const dated = v.dated !== false;
   const monthly = v.periodMode === "month";
-  const range = useMemo(() => (monthly ? monthRange(month) : presetRange(preset, from, to)), [monthly, month, preset, from, to]);
+  const range = useMemo(() => {
+    const r = monthly ? monthRange(month) : presetRange(preset, from, to);
+    // Roles limited to a month: a longer custom range is cut to the last `maxDays` days of it.
+    if (maxDays && r.days > maxDays) return resolveRange({ key: "custom", from: isoDate(addDays(r.to, -(maxDays - 1))), to: isoDate(r.to) });
+    return r;
+  }, [monthly, month, preset, from, to, maxDays]);
+  const presets = maxDays && maxDays < 365 ? PRESETS.filter((p) => p.id !== "year") : PRESETS;
   const cols = columns[variant] ?? NO_COLUMNS;
   const optionDefs = (spec.options ?? []).filter((o) => !o.variants || o.variants.includes(variant));
   const selectDefs = (spec.selects ?? []).filter((s) => !s.variants || s.variants.includes(variant));
@@ -246,7 +262,7 @@ export function ReportBuilder({
   }, [paperKey]);
   const params = useMemo<ReportParams>(() => ({ variant, range, branch, options, columns: cols, selects, paper }), [variant, range, branch, options, cols, selects, paper]);
   const deferred = useDeferredValue(params);
-  const doc = useMemo(() => spec.build(deferred, { agents }), [spec, deferred, agents]);
+  const doc = useMemo(() => spec.build(deferred, { agents, hideProfit }), [spec, deferred, agents, hideProfit]);
   const stale = deferred !== params;
   const { pages, measurer } = usePagination(doc, deferred.paper);
   const rows = tableRowCount(doc);
@@ -664,7 +680,7 @@ export function ReportBuilder({
         <>
           <div className="rb-label">Quick period</div>
           <div className="rb-chips" role="group" aria-label="Quick period">
-            {PRESETS.map((p) => (
+            {presets.map((p) => (
               <button key={p.id} type="button" className={preset === p.id ? "is-on" : ""} onClick={() => setPreset(p.id)}>
                 {p.label}
               </button>
@@ -702,8 +718,30 @@ export function ReportBuilder({
             <CalendarDays size={14} /> {summary.period} · {formatCount(range.days)} day{range.days === 1 ? "" : "s"}
             {v.periodNote ? ` · ${v.periodNote}` : ""}
           </p>
+          {maxDays && maxDays < 365 && <p className="rb-note">Your role reports on up to one month at a time (yearly reports are with the Branch Manager).</p>}
         </>
       );
+
+    if (id === "branch" && lockedBranch) {
+      const b = BRANCHES.find((x) => x.id === lockedBranch);
+      return (
+        <>
+          <div className="rb-choices" aria-label="Branch">
+            <div className="rb-choice is-on is-locked">
+              <i aria-hidden="true">
+                <Check size={12} />
+              </i>
+              <span>
+                <b>
+                  {b?.name} branch · {b?.code}
+                </b>
+                <small>Reports from the branch workspace always cover this branch only.</small>
+              </span>
+            </div>
+          </div>
+        </>
+      );
+    }
 
     if (id === "branch")
       return (

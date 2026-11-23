@@ -21,6 +21,9 @@
  * sequences then move to database-safe sequences — same rules).
  */
 import { useSyncExternalStore } from "react";
+import { can } from "./permissions";
+import { config } from "./config";
+import { enabledMethods } from "./org";
 import { getBranch } from "@/data/company";
 import { PAYMENT_METHODS, type PaymentMethod } from "@/data/types";
 import { hospitalKey } from "@/data/legacy";
@@ -90,6 +93,8 @@ export interface BillingSession {
   differentPatientConfirmed: boolean;
   startedAt: string;
   lastSaved: string | null;
+  /** Who started the bill (shown on the Drafts page). Older drafts may not have it. */
+  startedBy?: { name: string; role: string };
 }
 
 export interface Order {
@@ -190,6 +195,7 @@ const BRANCH_PREFIX: Record<string, string> = { Abuja: "ABJ", Lagos: "LAG" };
 /** Branch code for IDs — Abuja ABJ, Lagos LAG; others: first three letters of the city. */
 export function branchPrefix(branchId: string): string {
   const b = getBranch(branchId);
+  if (b?.idCode) return b.idCode;
   const city = b?.city ?? branchId;
   return BRANCH_PREFIX[city] ?? city.replace(/[^a-z]/gi, "").slice(0, 3).toUpperCase();
 }
@@ -255,16 +261,19 @@ export function patientById(branchId: string, patientId: string) {
 
 /** Same-name / same-phone patients registered at the branch (for the existing-patient prompt). */
 export function similarPatients(branchId: string, name: string, phone: string): PatientRecord[] {
-  const n = normName(name);
-  const d = phoneDigitsOnly(phone);
+  // Settings → Patient & Registration: which fields count as a possible duplicate (never merged automatically).
+  const by = config().patient.duplicateBy;
+  const n = by.name ? normName(name) : "";
+  const d = by.phone ? phoneDigitsOnly(phone) : "";
   return state.patients.filter((p) => p.branchId === branchId && ((n.length >= 3 && normName(p.name) === n) || (d.length >= 7 && phoneDigitsOnly(p.phone) === d)));
 }
 
 /** Possible duplicates before saving: same-day bills for a similar name or the same phone (for a different patient record). */
 export function duplicateWarnings(s: BillingSession): Order[] {
   const today = new Date().toDateString();
-  const n = normName(s.patient.name);
-  const d = phoneDigitsOnly(s.patient.phone);
+  const by = config().patient.duplicateBy;
+  const n = by.name ? normName(s.patient.name) : "";
+  const d = by.phone ? phoneDigitsOnly(s.patient.phone) : "";
   return state.orders.filter(
     (o) =>
       o.branchId === s.branchId &&
@@ -364,6 +373,8 @@ export function validateStep(s: BillingSession, step: 1 | 2 | 3, agents: AgentRe
   };
   if (step === 1) {
     if (normName(s.patient.name).length < 2) add("name", "Enter the patient's full name to continue.");
+    // Settings → Patient & Registration: phone number required.
+    if (config().patient.phoneRequired && !s.patient.phone.trim()) add("phone", "Enter the patient's phone number — it is required for every patient.");
     if (s.patient.phone.trim() && !isValidPhone(s.patient.phone)) add("phone", "Check the phone number — digits only, e.g. 0803 123 4567 or +234 803 123 4567.");
     if (!s.walkIn && s.agentId === null && !s.hospital) add("agent", "Select the PR agent who referred the patient — or turn on Walk-in patient.");
     if (s.agentId !== null && !agents.some((a) => a.id === s.agentId)) add("agent", "This PR agent is no longer on record — choose another.");
@@ -376,8 +387,14 @@ export function validateStep(s: BillingSession, step: 1 | 2 | 3, agents: AgentRe
     const t = computeBill(s);
     if (s.discount.amount < 0 || s.discount.amount > t.subtotal) add("discount", "The discount cannot be more than the bill.");
     if (s.discount.amount > 0 && !s.discount.reason.trim()) add("discountReason", "Give a reason for the discount.");
+    // Settings → Billing & Payments: discounts on/off and the maximum percentage.
+    if (s.discount.amount > 0 && !config().discounts.enabled) add("discount", "Discounts are turned off for the company.");
+    else if (s.discount.amount > maxDiscount(t.subtotal)) add("discount", `Discounts are limited to ${config().discounts.maxPercent}% of the bill (${maxDiscount(t.subtotal).toLocaleString("en-NG")}).`);
     const p = s.payment;
+    const offered = enabledMethods(s.branchId);
     if (p.method !== "Split" && !PAYMENT_METHODS.includes(p.method)) add("method", "Choose how the patient paid.");
+    else if (p.method !== "Split" && !offered.includes(p.method)) add("method", `${p.method} is turned off for this branch — choose another method.`);
+    else if (p.method === "Split" && (!config().payments.split || offered.length < 2)) add("method", "Split payments are turned off — choose one method.");
     if (p.method === "Split") {
       if (PAYMENT_METHODS.some((m) => (p.split[m] || 0) < 0)) add("split", "Split amounts cannot be negative.");
       if (t.amountPaid <= 0) add("split", "Enter the amount received for at least one payment method.");
@@ -400,8 +417,9 @@ export function validateStep(s: BillingSession, step: 1 | 2 | 3, agents: AgentRe
 
 /* ─────────────── Sessions & drafts ─────────────── */
 
-export function newSession(branchId: string, entry: "new" | "referral"): BillingSession {
+export function newSession(branchId: string, entry: "new" | "referral", startedBy?: { name: string; role: string }): BillingSession {
   return {
+    startedBy,
     id: uuid(),
     branchId,
     step: 1,
@@ -432,6 +450,61 @@ export function saveDraft(s: BillingSession): BillingSession {
   return saved;
 }
 
+/**
+ * Take a draft out of the store for the Trash (owner rule: nothing is deleted
+ * outright). Its reserved Patient ID is released; restoring reserves a new one.
+ */
+export function takeDraft(id: string): BillingSession | null {
+  const d = state.drafts.find((x) => x.id === id);
+  if (!d) return null;
+  if (d.reservedId) releasePatientId(d.reservedId);
+  commit({ ...state, drafts: state.drafts.filter((x) => x.id !== id) });
+  return { ...d, reservedId: null, reservedType: null };
+}
+
+/** Put a draft back (from the Trash). A new patient past step 1 gets a fresh Patient ID reservation. */
+export function restoreDraft(d: BillingSession) {
+  let s = d;
+  if (!s.patient.uuid && s.step > 1) {
+    const type = patientSourceType(s);
+    s = { ...s, reservedId: reservePatientId(s.branchId, type, s.id), reservedType: type };
+  }
+  commit({ ...state, drafts: [s, ...state.drafts.filter((x) => x.id !== s.id)] });
+}
+
+/**
+ * Saved drafts that look like the same patient — same existing Patient ID,
+ * same phone number, or the same name. Used to warn "there is already a
+ * draft for this patient" before a second bill is started.
+ */
+export function draftsForPatient(branchId: string, p: { name: string; phone: string; existingId: string | null }, excludeId?: string): BillingSession[] {
+  const by = config().patient.duplicateBy;
+  const name = by.name ? normName(p.name) : "";
+  const phone = by.phone ? phoneDigitsOnly(p.phone) : "";
+  if (!p.existingId && name.length < 3 && phone.length < 7) return [];
+  return state.drafts.filter((d) => {
+    if (d.branchId !== branchId || d.id === excludeId) return false;
+    if (p.existingId && d.patient.existingId === p.existingId) return true;
+    if (phone.length >= 7 && phoneDigitsOnly(d.patient.phone) === phone) return true;
+    return name.length >= 3 && normName(d.patient.name) === name;
+  });
+}
+
+/** Take a saved bill out (for the Trash). The patient record stays. */
+export function takeOrder(invoiceNo: string): Order | null {
+  const o = state.orders.find((x) => x.invoiceNo === invoiceNo) ?? null;
+  if (o) commit({ ...state, orders: state.orders.filter((x) => x.invoiceNo !== invoiceNo) });
+  return o;
+}
+
+/** Put a bill back exactly as it was (from the Trash). */
+export function restoreOrder(o: Order) {
+  if (state.orders.some((x) => x.invoiceNo === o.invoiceNo)) return;
+  commit({ ...state, orders: [o, ...state.orders].sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
+}
+
+export const orderByInvoice = (invoiceNo: string) => state.orders.find((o) => o.invoiceNo === invoiceNo) ?? null;
+
 export function deleteDraft(id: string, opts: { release?: boolean } = {}) {
   const d = state.drafts.find((x) => x.id === id);
   if (opts.release && d?.reservedId) releasePatientId(d.reservedId);
@@ -454,14 +527,16 @@ export type SubmitResult = { ok: true; order: Order } | { ok: false; error: stri
  * discount, payment and referral snapshots), remove the draft and audit it.
  * Nothing is marked complete unless the save succeeds.
  */
-export function submitBilling(s: BillingSession, agents: AgentRecord[], user: { name: string; role: string }, canAdjust: boolean): SubmitResult {
+export function submitBilling(s: BillingSession, agents: AgentRecord[], user: { name: string; role: string }): SubmitResult {
   try {
     for (const step of [1, 2, 3] as const) {
       const c = validateStep(s, step, agents);
       if (!c.ok) return { ok: false, error: c.errors[0] };
     }
     if (!user.name) return { ok: false, error: "The person processing this bill is not known — sign in again." };
-    if (!canAdjust && (s.services.some((x) => x.overridePrice !== null) || s.discount.amount > 0)) return { ok: false, error: "You are not allowed to change prices or give discounts. Ask the branch manager." };
+    // Rights come from Settings → Roles & Permissions (checked again here, not only in the form).
+    if (s.services.some((x) => x.overridePrice !== null) && !canOverridePrices(user.role)) return { ok: false, error: "You are not allowed to change prices on a bill. Ask the branch manager." };
+    if (s.discount.amount > 0 && !canGiveDiscount(user.role)) return { ok: false, error: "You are not allowed to give discounts. Ask the branch manager." };
     const branch = getBranch(s.branchId);
     if (!branch) return { ok: false, error: "This branch is not available." };
     const t = computeBill(s);
@@ -554,18 +629,25 @@ export function syncQueue(s: State = state): Order[] {
 }
 
 /** Who may change a price or give a discount (central permission rule). */
-export const canAdjustPrices = (role: string) => role === "Branch Manager" || role === "Company Admin";
+/** Change a service's price on one bill (Settings → Roles & Permissions: "Change a service price on a bill"). */
+export const canOverridePrices = (role: string) => can(role, "billing.override");
+/** Give a discount: the company allows discounts (Billing & Payments) and the role has "Give discounts". */
+export const canGiveDiscount = (role: string) => config().discounts.enabled && can(role, "billing.discount");
+/** Kept for older callers: price changes on a bill. */
+export const canAdjustPrices = canOverridePrices;
+/** Largest discount allowed on a bill (company maximum %, never more than the bill). */
+export const maxDiscount = (subtotal: number) => Math.floor((subtotal * Math.min(100, Math.max(0, config().discounts.maxPercent))) / 100);
 
 /**
  * Who can approve leaving a balance (part payment / unpaid): the person
- * processing the bill, plus active branch managers and accountants from Staff
+ * processing the bill, plus the branch's active manager(s) from Staff
  * Management. Value format "Name|Role".
  */
 export function balanceApprovers(staff: readonly { name: string; role: string; branchId: string; status: string }[], branchId: string, user: { name: string; role: string }) {
   const out = new Map<string, { value: string; label: string; description: string }>();
   out.set(`${user.name}|${user.role}`, { value: `${user.name}|${user.role}`, label: user.name, description: `${user.role} · processing this bill` });
   for (const s of staff)
-    if (s.branchId === branchId && s.status !== "Left" && (s.role === "Branch Manager" || s.role === "Accountant")) {
+    if (s.branchId === branchId && s.status !== "Left" && s.role === "Branch Manager") {
       const v = `${s.name}|${s.role}`;
       if (!out.has(v)) out.set(v, { value: v, label: s.name, description: s.role });
     }

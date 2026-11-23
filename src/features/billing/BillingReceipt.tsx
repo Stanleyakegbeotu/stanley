@@ -38,7 +38,7 @@ export function OrderReceiptDoc({ order, branch, profile, paper, printedAt }: { 
     <div className={`rc rc-${paper}`} style={{ width: `${width}mm`, padding: ps.pad, fontSize: ps.fs, ["--rc-logo" as string]: ps.logo }}>
       <header className="rc-head">
         <div className="rc-logo">
-          <BrandLogo />
+          <BrandLogo receipt />
         </div>
         <div className="rc-co">{companyName}</div>
         {profile.motto && <div className="rc-motto">“{profile.motto}”</div>}

@@ -6,7 +6,8 @@ export type Currency = "NGN" | "GHS";
  */
 export type Money = Partial<Record<Currency, number>>;
 
-export type BranchStatus = "Active" | "Inactive";
+/** Active = trading · Pending setup = created, not yet activated · Inactive / Suspended = closed (records kept). */
+export type BranchStatus = "Active" | "Inactive" | "Suspended" | "Pending setup";
 
 export interface Branch {
   id: string;
@@ -23,6 +24,15 @@ export interface Branch {
   /** Typical daily patient volume used by the demo generator. */
   basePatients: number;
   openedOn: string;
+  /** Three-letter code used in Patient IDs (ABJ → ABJ-R000001). Unique across branches. */
+  idCode?: string;
+  state?: string;
+  email?: string;
+  contactPerson?: string;
+  /** IANA timezone, e.g. Africa/Lagos. */
+  timezone?: string;
+  /** Created in STANLEY (ISO) — absent for the legacy branch. */
+  createdAt?: string;
 }
 
 /** Owner (2026-11-21): no insurance (HMO) scheme is run — patients pay by cash, POS or transfer. */

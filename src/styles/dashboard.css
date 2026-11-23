@@ -2642,7 +2642,7 @@ th[aria-sort="ascending"] .bp-sort svg {
   background: linear-gradient(90deg, var(--brand-700), var(--brand-500));
 }
 
-:is(.modal.data, .bw, .inv, .ap) .modal-head {
+:is(.modal.data, .bw, .inv, .ap, .ex-page) .modal-head {
   position: relative;
   overflow: hidden;
   align-items: center;
@@ -2652,7 +2652,7 @@ th[aria-sort="ascending"] .bp-sort svg {
   background: linear-gradient(115deg, color-mix(in srgb, var(--accent) 12%, var(--surface)) 0%, color-mix(in srgb, var(--accent) 4%, var(--surface)) 50%, var(--surface) 100%);
 }
 
-:is(.modal.data, .bw, .inv, .ap) .modal-head > * {
+:is(.modal.data, .bw, .inv, .ap, .ex-page) .modal-head > * {
   position: relative;
   z-index: 1;
 }
@@ -2669,32 +2669,32 @@ th[aria-sort="ascending"] .bp-sort svg {
   box-shadow: 0 8px 18px color-mix(in srgb, var(--accent) 34%, transparent);
 }
 
-:is(.modal.data, .bw, .inv, .ap) .modal-head h2 {
+:is(.modal.data, .bw, .inv, .ap, .ex-page) .modal-head h2 {
   font-size: 21px;
   font-weight: 700;
   letter-spacing: -0.015em;
   color: var(--ink);
 }
 
-:is(.modal.data, .bw, .inv, .ap) .modal-head p {
+:is(.modal.data, .bw, .inv, .ap, .ex-page) .modal-head p {
   margin-top: 5px;
   font-size: 13.5px;
   font-weight: 500;
   color: color-mix(in srgb, var(--accent) 45%, var(--muted));
 }
 
-:is(.modal.data, .bw, .inv, .ap) .modal-head .icon-btn {
+:is(.modal.data, .bw, .inv, .ap, .ex-page) .modal-head .icon-btn {
   align-self: flex-start;
 }
 
-:is(.modal.data, .bw, .inv, .ap) .modal-body {
+:is(.modal.data, .bw, .inv, .ap, .ex-page) .modal-body {
   gap: 18px;
   padding: 22px 26px 26px;
   background: color-mix(in srgb, var(--canvas) 70%, var(--surface));
 }
 
 /* Filter panel */
-:is(.modal.data, .bw, .inv, .ap) .rf-filters {
+:is(.modal.data, .bw, .inv, .ap, .ex-page) .rf-filters {
   background: var(--surface);
   border-color: var(--line);
   box-shadow: var(--shadow-1);
@@ -2702,23 +2702,23 @@ th[aria-sort="ascending"] .bp-sort svg {
   padding: 18px 20px;
 }
 
-:is(.modal.data, .bw, .inv, .ap) .rf-filter > span:first-child {
+:is(.modal.data, .bw, .inv, .ap, .ex-page) .rf-filter > span:first-child {
   color: color-mix(in srgb, var(--accent) 55%, var(--muted));
   font-weight: 700;
   letter-spacing: 0.08em;
 }
 
-:is(.modal.data, .bw, .inv, .ap) .rf-filter .segmented {
+:is(.modal.data, .bw, .inv, .ap, .ex-page) .rf-filter .segmented {
   background: color-mix(in srgb, var(--accent) 6%, var(--canvas));
   border-color: color-mix(in srgb, var(--accent) 12%, var(--line));
 }
 
 /* Summary tiles: theme accent only */
-:is(.modal.data, .bw, .inv, .ap) .rf-kpis {
+:is(.modal.data, .bw, .inv, .ap, .ex-page) .rf-kpis {
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 }
 
-:is(.modal.data, .bw, .inv, .ap) .rf-kpi {
+:is(.modal.data, .bw, .inv, .ap, .ex-page) .rf-kpi {
   --accent: var(--brand-600);
   padding: 16px 16px 14px 20px;
   border-radius: 18px;
@@ -2727,17 +2727,17 @@ th[aria-sort="ascending"] .bp-sort svg {
 }
 
 /* No corner glow inside pop-ups — it reads as a grey smudge on dark theme colours. */
-:is(.modal.data, .bw, .inv, .ap) .rf-kpi::after {
+:is(.modal.data, .bw, .inv, .ap, .ex-page) .rf-kpi::after {
   display: none;
 }
 
-:is(.modal.data, .bw, .inv, .ap) .rf-kpi-icon {
+:is(.modal.data, .bw, .inv, .ap, .ex-page) .rf-kpi-icon {
   color: #fff;
   background: linear-gradient(140deg, var(--brand-500), var(--brand-700));
   box-shadow: 0 4px 10px color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
-:is(.modal.data, .bw, .inv, .ap) .rf-kpi-label {
+:is(.modal.data, .bw, .inv, .ap, .ex-page) .rf-kpi-label {
   font-size: 11.5px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -2745,19 +2745,19 @@ th[aria-sort="ascending"] .bp-sort svg {
   color: var(--muted);
 }
 
-:is(.modal.data, .bw, .inv, .ap) .rf-kpi.is-danger .rf-kpi-value {
+:is(.modal.data, .bw, .inv, .ap, .ex-page) .rf-kpi.is-danger .rf-kpi-value {
   color: var(--danger);
 }
 
 /* Table */
-:is(.modal.data, .bw, .inv, .ap) .rf-table-card {
+:is(.modal.data, .bw, .inv, .ap, .ex-page) .rf-table-card {
   border-radius: 18px;
   border-color: var(--line);
   box-shadow: var(--shadow-1);
   overflow: hidden;
 }
 
-:is(.modal.data, .bw, .inv, .ap) .bp-table thead th {
+:is(.modal.data, .bw, .inv, .ap, .ex-page) .bp-table thead th {
   height: 44px;
   font-size: 11.5px;
   font-weight: 700;
@@ -2768,42 +2768,42 @@ th[aria-sort="ascending"] .bp-sort svg {
   border-bottom: 1px solid color-mix(in srgb, var(--accent) 16%, var(--line));
 }
 
-:is(.modal.data, .bw, .inv, .ap) .bp-table tbody tr {
+:is(.modal.data, .bw, .inv, .ap, .ex-page) .bp-table tbody tr {
   transition: background 0.15s var(--ease);
 }
 
-:is(.modal.data, .bw, .inv, .ap) .bp-table tbody tr:nth-child(even) td {
+:is(.modal.data, .bw, .inv, .ap, .ex-page) .bp-table tbody tr:nth-child(even) td {
   background: color-mix(in srgb, var(--canvas) 45%, var(--surface));
 }
 
-:is(.modal.data, .bw, .inv, .ap) .bp-table tbody tr:hover td {
+:is(.modal.data, .bw, .inv, .ap, .ex-page) .bp-table tbody tr:hover td {
   background: color-mix(in srgb, var(--accent) 6%, var(--surface));
 }
 
-:is(.modal.data, .bw, .inv, .ap) .bp-table td strong {
+:is(.modal.data, .bw, .inv, .ap, .ex-page) .bp-table td strong {
   color: var(--ink);
 }
 
-:is(.modal.data, .bw, .inv, .ap) .rank-no {
+:is(.modal.data, .bw, .inv, .ap, .ex-page) .rank-no {
   color: color-mix(in srgb, var(--accent) 80%, var(--ink));
   background: color-mix(in srgb, var(--accent) 10%, var(--surface));
 }
 
-:is(.modal.data, .bw, .inv, .ap) tbody tr:first-child .rank-no {
+:is(.modal.data, .bw, .inv, .ap, .ex-page) tbody tr:first-child .rank-no {
   color: #fff;
   background: var(--accent);
 }
 
-:is(.modal.data, .bw, .inv, .ap) .bp-bar i {
+:is(.modal.data, .bw, .inv, .ap, .ex-page) .bp-bar i {
   background: var(--accent);
 }
 
-:is(.modal.data, .bw, .inv, .ap) .pager {
+:is(.modal.data, .bw, .inv, .ap, .ex-page) .pager {
   background: color-mix(in srgb, var(--canvas) 55%, var(--surface));
   border-top: 1px solid var(--line);
 }
 
-:is(.modal.data, .bw, .inv, .ap) .modal-foot {
+:is(.modal.data, .bw, .inv, .ap, .ex-page) .modal-foot {
   padding: 16px 26px;
   background: var(--surface);
 }

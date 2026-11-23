@@ -1,3 +1,5 @@
+// Branches added in Settings must join the live branch list before anything reads it.
+import "@/services/org";
 import { useEffect, useRef } from "react";
 import { AnimatePresence, MotionConfig, motion } from "framer-motion";
 import { CheckCheck, LogOut } from "lucide-react";

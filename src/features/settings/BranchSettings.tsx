@@ -18,6 +18,7 @@ import { AnimatedPage } from "@/shared/motion";
 import { Badge } from "@/shared/ui/controls";
 import { PageHero } from "@/features/shared/PageHero";
 import { AuditLogView, TrashLogView } from "@/features/admin/AdminLogs";
+import { can, usePermissions } from "@/services/permissions";
 import { BranchProfileForm, BranchStaffControl } from "./BranchForms";
 import { ProfileCard } from "./ProfileCard";
 import { SettingsBlock, SettingsFrame, ThemeCards, useSection, type SettingsSection } from "./SettingsFrame";
@@ -36,7 +37,9 @@ const STAFF_SECTIONS: SettingsSection[] = [PROFILE, { id: "access", label: "My a
 
 export function BranchSettingsPage({ branch }: { branch: Branch }) {
   const { user, theme, staff } = useApp();
-  const isManagerView = user.kind === "manager";
+  // Branch sections follow the role's permissions (Settings → Roles & Permissions).
+  usePermissions();
+  const isManagerView = user.kind === "manager" && (can(user.role, "branch.settings") || can(user.role, "staff.manage"));
   const sections = isManagerView ? MANAGER_SECTIONS : STAFF_SECTIONS;
   const current = useSection(sections);
   const basePath = `/branch/${branch.id}/settings`;
@@ -107,7 +110,7 @@ export function BranchTrashPage({ branch }: { branch: Branch }) {
   return (
     <AnimatedPage>
       <PageHero eyebrow={`Recoverable for ${TRASH_RETENTION_DAYS} days · ${branch.name} branch`} title="Trash" period={false} icon={Trash2} stats="trash" scope={[branch.id]} />
-      <TrashLogView scope={[branch.id]} readOnly={user.kind === "staff"} />
+      <TrashLogView scope={[branch.id]} readOnly={!can(user.role, "trash.restore")} />
     </AnimatedPage>
   );
 }

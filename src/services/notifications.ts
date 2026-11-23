@@ -14,6 +14,7 @@
  * marked unread). Kept for the session until the database is connected.
  */
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useConfig } from "./config";
 import { ACTIVE_BRANCHES, getBranch } from "@/data/company";
 import { CATALOGUE_INVENTORY } from "@/data/catalogueRules";
 import { DAILY, DATA_START, TODAY, addDays, diffDays, isoDate } from "@/data/demo/generator";
@@ -308,7 +309,9 @@ export function useNotifications(): { notes: Note[]; version: number } {
     },
     () => stateVersion,
   );
-  const notes = useMemo(() => notesFor(rates, bucket), [rates, bucket]);
+  // Settings → Notifications: only the categories switched on are shown.
+  const kinds = useConfig().notifications.kinds;
+  const notes = useMemo(() => notesFor(rates, bucket).filter((n) => kinds[n.kind] !== false), [rates, bucket, kinds]);
   return { notes, version };
 }
 

@@ -31,6 +31,7 @@ import { PriceCalculatorButton } from "@/features/quote/PriceCalculator";
 import { PatientSearch } from "./PatientSearch";
 import { useNetworkStatus } from "@/shared/useNetworkStatus";
 import { syncQueue, useBilling } from "@/services/billing";
+import { expenseSyncQueue, useExpenses } from "@/services/expenses";
 
 export function Header() {
   const { route } = useApp();
@@ -259,7 +260,10 @@ function NetworkButton() {
   const net = useNetworkStatus(announce);
   const label = net.online ? "Online" : "Offline";
   // Bills saved on this device, waiting (in order) to sync to the cloud.
-  const queued = syncQueue(useBilling()).length;
+  const bills = syncQueue(useBilling()).length;
+  const expenses = expenseSyncQueue(useExpenses()).length;
+  const queued = bills + expenses;
+  const queuedText = [bills ? `${bills} bill${bills === 1 ? "" : "s"}` : "", expenses ? `${expenses} expense${expenses === 1 ? "" : "s"}` : ""].filter(Boolean).join(" and ");
   const speed = [net.effectiveType ? net.effectiveType.toUpperCase() : null, net.downlink ? `~${net.downlink} Mbps` : null, net.rtt ? `${net.rtt} ms latency` : null].filter(Boolean).join(" · ");
 
   return (
@@ -301,7 +305,7 @@ function NetworkButton() {
               : "No internet connection. STANLEY is offline-first — you can keep working on this device and nothing is blocked."}
           </p>
           <div className={`net-sync ${queued ? "has-queue" : ""}`}>
-            <b>{queued ? `${queued} bill${queued === 1 ? "" : "s"} waiting to sync` : "Nothing waiting to sync"}</b>
+            <b>{queued ? `${queuedText} waiting to sync` : "Nothing waiting to sync"}</b>
             <small>{queued ? "Saved safely on this device and queued in order. They upload to the cloud database automatically once it is connected and you are online." : "Bills are saved on this device first, then queued for the cloud — so billing never stops when the internet drops."}</small>
           </div>
           <p className="net-note">The cloud database is not connected in this version, so queued bills stay on this device (for this session) until it is set up.</p>

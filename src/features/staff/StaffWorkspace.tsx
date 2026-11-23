@@ -24,6 +24,7 @@ import { SummaryChips } from "@/features/dashboard/ExpensesPatients";
 import { FieldError, focusFirstError } from "@/shared/ui/FieldError";
 import { NAME_INPUT_PROPS, nameChange } from "@/shared/nameCase";
 import { MoveToTrashDialog } from "@/features/admin/AdminLogs";
+import { resolvePhoto, useSettings } from "@/services/settingsStore";
 
 export const staffInitials = (name: string) =>
   name
@@ -46,6 +47,13 @@ function tenure(iso: string): string {
   const y = Math.floor(months / 12);
   const m = months % 12;
   return [y ? `${y} year${y === 1 ? "" : "s"}` : "", m ? `${m} month${m === 1 ? "" : "s"}` : ""].filter(Boolean).join(" ");
+}
+
+/** The person's photo (their upload, else their default photo) or their initials. */
+function StaffFace({ s }: { s: StaffRecord }) {
+  const { profiles } = useSettings();
+  const photo = resolvePhoto(profiles, s.id, s.photo);
+  return photo ? <img className="st-face" src={photo} alt="" /> : <>{staffInitials(s.name)}</>;
 }
 
 /* ─────────────── Branch view ─────────────── */
@@ -87,7 +95,7 @@ export function StaffBranchView({ branchId, onAdd }: { branchId: string; onAdd: 
         {manager ? (
           <motion.button type="button" className="card st-mgr" onClick={() => setViewing(manager.id)} whileHover={m.cardHover} aria-label={`${manager.name}, branch manager — open profile`}>
             <span className="st-mgr-avatar" aria-hidden="true">
-              {staffInitials(manager.name)}
+              <StaffFace s={manager} />
               <i>
                 <Crown size={13} />
               </i>
@@ -151,7 +159,7 @@ export function StaffBranchView({ branchId, onAdd }: { branchId: string; onAdd: 
         )}
         {team.length === 0 ? (
           <div className="card st-empty">
-            <EmptyState title="No staff added yet">Staff records were not part of the legacy export. Add each person once — front desk, laboratory, imaging and accounts.</EmptyState>
+            <EmptyState title="No staff added yet">Staff records were not part of the legacy export. Add the branch manager and the front-desk attendants — the only people who use STANLEY. Other staff are managed outside the app.</EmptyState>
             <Button onClick={() => onAdd()}>
               <Plus size={16} /> Add staff member
             </Button>
@@ -166,15 +174,17 @@ export function StaffBranchView({ branchId, onAdd }: { branchId: string; onAdd: 
               <motion.button key={s.id} type="button" className={`card st-card ${s.status === "Left" ? "is-left" : ""}`} variants={m.revealItem} whileHover={m.cardHover} onClick={() => setViewing(s.id)} aria-label={`${s.name}, ${s.role} — open profile`}>
                 <span className="st-card-top">
                   <span className="st-avatar" aria-hidden="true">
-                    {staffInitials(s.name)}
+                    <StaffFace s={s} />
                   </span>
                   <span className="st-card-name">
                     <strong>{s.name}</strong>
                     <small>{s.role}</small>
+                    <span className="st-card-status">
+                      <Badge tone={STATUS_TONE[s.status]} dot>
+                        {s.status}
+                      </Badge>
+                    </span>
                   </span>
-                  <Badge tone={STATUS_TONE[s.status]} dot>
-                    {s.status}
-                  </Badge>
                 </span>
                 <span className="st-card-rows">
                   <span>
@@ -241,7 +251,7 @@ export function StaffProfile({ member, onClose }: { member: StaffRecord; onClose
           <aside className="fd-side ap-side">
             <div className="ap-id">
               <span className="ap-avatar" aria-hidden="true">
-                {staffInitials(member.name)}
+                <StaffFace s={member} />
               </span>
               <strong>{member.name}</strong>
               <small>
@@ -349,7 +359,7 @@ export function StaffProfile({ member, onClose }: { member: StaffRecord; onClose
                           {team.map((s) => (
                             <li key={s.id}>
                               <span className="st-avatar sm" aria-hidden="true">
-                                {staffInitials(s.name)}
+                                <StaffFace s={s} />
                               </span>
                               <span>
                                 <b>{s.name}</b>

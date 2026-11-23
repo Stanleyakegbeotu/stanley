@@ -1253,6 +1253,16 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
 }
+/* Front desk has 5 shortcuts: one row on wide screens instead of 4 + 1. */
+@media (min-width: 1061px) {
+  .bd-actions.is-five {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+  /* 6 shortcuts (front desk): 3 + 3 instead of 4 + 2. */
+  .bd-actions.is-six {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
 .bd-action {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;

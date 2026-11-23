@@ -14,22 +14,42 @@ import { REPORTS, reportById, type ReportSpec } from "./specs";
 /** Old links (?tab=…) from before the builder existed. */
 const LEGACY_TABS: Record<string, string> = { overview: "revenue", doctors: "agents", hospitals: "hospitals", services: "services" };
 
-export function ReportsHome({ initialBranch }: { initialBranch?: string }) {
+export function ReportsHome({
+  initialBranch,
+  reports = REPORTS,
+  basePath = "/reports",
+  lockedBranch,
+  heading = "Choose a report",
+  maxDays,
+  subheading = "Select Create report to choose the period, branch and content, then preview it before printing",
+}: {
+  initialBranch?: string;
+  /** Reports to offer (the branch Analysis page passes the role's reports). */
+  reports?: ReportSpec[];
+  basePath?: string;
+  /** Branch workspace: every report covers this branch only. */
+  lockedBranch?: string;
+  heading?: string;
+  subheading?: string;
+  /** Longest report period allowed (front desk: one month). */
+  maxDays?: number;
+}) {
   const { route, navigate } = useApp();
   const m = useMotionPreset();
   const q = route.query.get("report") ?? LEGACY_TABS[route.query.get("tab") ?? ""] ?? null;
-  const open = reportById(q);
-  const go = (id: string | null) => navigate(id ? `/reports?report=${id}` : "/reports");
+  // Only reports in the offered list can be opened (a link to another report does nothing).
+  const open = reportById(q) ? reports.find((r) => r.id === q) : undefined;
+  const go = (id: string | null) => navigate(id ? `${basePath}?report=${id}` : basePath);
 
   return (
     <>
       <section className="inv-section">
         <header className="inv-section-head">
-          <h3>Choose a report</h3>
-          <span>Select Create report to choose the period, branch and content, then preview it before printing</span>
+          <h3>{heading}</h3>
+          <span>{subheading}</span>
         </header>
         <Reveal mode="stagger" className="rp-cards">
-          {REPORTS.map((r) => (
+          {reports.map((r) => (
             <motion.div key={r.id} variants={m.revealItem}>
               <ReportCard spec={r} onCreate={() => go(r.id)} />
             </motion.div>
@@ -41,6 +61,8 @@ export function ReportsHome({ initialBranch }: { initialBranch?: string }) {
           key={`${open.id}|${route.query.get("variant") ?? ""}|${route.query.get("month") ?? ""}`}
           spec={open}
           initialBranch={route.query.get("branch") ?? initialBranch}
+          lockedBranch={lockedBranch}
+          maxDays={maxDays}
           initialVariant={route.query.get("variant")}
           initialMonth={route.query.get("month")}
           onClose={() => go(null)}

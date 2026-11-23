@@ -18,6 +18,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import { PAGE_PERMISSION, can } from "@/services/permissions";
+
 export interface NavItem {
   id: string;
   label: string;
@@ -60,6 +62,20 @@ export const BRANCH_NAV_ITEMS: Omit<NavItem, "path">[] = [
   { id: "trash", label: "Trash", icon: Trash2 },
 ];
 
-export function branchNav(branchId: string): NavItem[] {
-  return BRANCH_NAV_ITEMS.map((i) => ({ ...i, path: `/branch/${branchId}/${i.id}` }));
+/**
+ * Which branch pages a role can open — decided by Roles & Permissions
+ * (services/permissions.ts, PAGE_PERMISSION). Defaults (owner, 2026-11-22):
+ * the Branch Manager (and the Company Admin inside a branch) sees every page;
+ * Front Desk gets the day-to-day work — billing, drafts, records, the price
+ * list, expenses, Analysis (limited) and their own settings. The Company Admin
+ * can change this in Settings.
+ */
+export function canOpenBranchPage(role: string, page: string): boolean {
+  const base = page.split("?")[0] || "dashboard";
+  const perm = PAGE_PERMISSION[base];
+  return perm === null || perm === undefined ? true : can(role, perm);
+}
+
+export function branchNav(branchId: string, role = "Branch Manager"): NavItem[] {
+  return BRANCH_NAV_ITEMS.filter((i) => canOpenBranchPage(role, i.id)).map((i) => ({ ...i, path: `/branch/${branchId}/${i.id}` }));
 }

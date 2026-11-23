@@ -11,6 +11,8 @@ import { Popover } from "@/shared/ui/Popover";
 import { Badge } from "@/shared/ui/controls";
 import { BrandLogo, UserAvatar, useCompanyName } from "./BrandLogo";
 import { COMPANY_NAV, branchNav } from "./navigation";
+import { usePermissions } from "@/services/permissions";
+import { useBranches } from "@/services/org";
 
 type Tip = { label: string; top: number; left: number } | null;
 
@@ -19,11 +21,15 @@ type Tip = { label: string; top: number; left: number } | null;
  * navigation list swaps between the Company and Branch workspaces.
  */
 export function Sidebar() {
-  const { collapsed, setCollapsed, route, navigate, context } = useApp();
+  const { collapsed, setCollapsed, route, navigate, context, user } = useApp();
+  // Re-render when the Company Admin changes permissions or branches.
+  usePermissions();
+  useBranches();
   const br = branchRoute(route);
   const branch = br ? getBranch(br.branchId) : undefined;
   const contextBranch = context === "all" ? undefined : getBranch(context);
-  const items = br ? branchNav(br.branchId) : COMPANY_NAV;
+  // Inside a branch, each role sees only the pages it can use (front desk: day-to-day work).
+  const items = br ? branchNav(br.branchId, user.role) : COMPANY_NAV;
   const activeId = br ? br.page : (COMPANY_NAV.find((i) => route.path.startsWith(i.path))?.id ?? "dashboard");
   const [tip, setTip] = useState<Tip>(null);
   const companyName = useCompanyName();
@@ -71,7 +77,7 @@ export function Sidebar() {
       </div>
 
       <nav className="sb-nav">
-        <div className="sb-section-label sb-fade">{br ? "Branch operations" : "Navigation"}</div>
+        <div className="sb-section-label sb-fade">{br ? (user.kind === "staff" ? `${user.role} · daily work` : "Branch operations") : "Navigation"}</div>
         <LayoutGroup id="sidebar-nav">
           <AnimatePresence mode="wait" initial={false}>
             <motion.ul
@@ -144,7 +150,8 @@ function SidebarBottom({ tipHandlers }: { tipHandlers: TipHandlers }) {
 
   return (
     <div className="sb-bottom">
-      <BranchSwitcher tipHandlers={tipHandlers} inBranch={Boolean(br)} currentBranchId={br?.branchId} />
+      {/* Switching to company admin / other branches is not for branch staff accounts. */}
+      {user.kind !== "staff" && <BranchSwitcher tipHandlers={tipHandlers} inBranch={Boolean(br)} currentBranchId={br?.branchId} />}
 
       <div className="sb-account">
         <div className="sb-account-row">

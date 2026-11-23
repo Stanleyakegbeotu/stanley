@@ -44,6 +44,8 @@ export const CURRENT_USER: AppUser = {
   email: NOT_ON_RECORD,
   kind: "admin",
   key: "admin",
+  // Sample headshot for the demo (public/mock-photos/CREDITS.md); the admin can replace or remove it in Settings.
+  photo: `${import.meta.env.BASE_URL}mock-photos/company-admin.jpg`,
 };
 
 /**
@@ -61,10 +63,16 @@ export const BRANCH_MANAGER_PLACEHOLDER: AppUser = {
   key: "placeholder-manager",
 };
 
+/**
+ * The live branch list. Starts with the real legacy branch; branches added in
+ * Settings → Branch Management (services/org.ts) are added to this same array
+ * so every page sees them. Kept as one array (mutated in place by org.ts).
+ */
 export const BRANCHES: Branch[] = [
   {
     id: LEGACY_BRANCH_ID,
     code: "BR001",
+    idCode: "ABJ",
     name: "Abuja",
     city: "Abuja",
     country: "Nigeria",
@@ -79,7 +87,14 @@ export const BRANCHES: Branch[] = [
   },
 ];
 
-export const ACTIVE_BRANCHES = BRANCHES.filter((b) => b.status === "Active");
+/** Branches the demo-activity generator covers — the built-in legacy branch only (new branches never get invented activity). */
+export const DEMO_BRANCHES: readonly Branch[] = Object.freeze(BRANCHES.filter((b) => b.status === "Active"));
+
+/** Branches that are trading now. Kept in sync by syncActiveBranches() when a branch is added or its status changes. */
+export const ACTIVE_BRANCHES: Branch[] = BRANCHES.filter((b) => b.status === "Active");
+export function syncActiveBranches() {
+  ACTIVE_BRANCHES.splice(0, ACTIVE_BRANCHES.length, ...BRANCHES.filter((b) => b.status === "Active"));
+}
 
 export function getBranch(id: string | null | undefined): Branch | undefined {
   return BRANCHES.find((b) => b.id === id);

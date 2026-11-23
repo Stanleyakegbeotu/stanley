@@ -14,4 +14,11 @@
 @import "./styles/branch.css";
 @import "./styles/billing.css";
 @import "./styles/settings.css";
+@import "./styles/settings-center.css";
+@import "./styles/expenses.css";
+@import "./styles/drafts.css";
+@import "./styles/analysis.css";
 @import "./styles/bands.css";
+@import "./styles/tables.css";
+@import "./styles/staff.css";
+@import "./styles/sidebars.css";

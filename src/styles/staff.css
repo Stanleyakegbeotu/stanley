@@ -1,0 +1,108 @@
+/* ───────────────────────── Staff Management (owner rule, 2026-11-22) ─────────────────────────
+   A staff member's name is always shown in full: it may wrap onto a second
+   line between words, but is never cut or broken in the middle of a word
+   ("Funmila-yo"). Emails and IDs may still wrap anywhere — they have no spaces. */
+
+.st-card-name strong,
+.st-mgr-main strong,
+.ap-id strong,
+.st-person strong,
+.al-person-text b {
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: manual;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+/* Status sits under the role, so the name has the card's full width. */
+.st-card-top {
+  align-items: flex-start;
+}
+.st-card-name {
+  gap: 2px;
+}
+.st-card-name strong {
+  font-size: 15.5px;
+  line-height: 1.3;
+}
+.st-card-status {
+  display: flex;
+  margin-top: 6px;
+}
+
+/* ─────────────── Profile photos in avatars ─────────────── */
+.st-avatar,
+.st-mgr-avatar,
+.ap-avatar {
+  overflow: hidden;
+}
+.st-face {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  border-radius: inherit;
+}
+/* The manager's crown badge sits on top of the photo. */
+.st-mgr-avatar {
+  position: relative;
+  overflow: visible;
+}
+.st-mgr-avatar > .st-face {
+  border-radius: inherit;
+}
+.ap-avatar:has(> .st-face) {
+  padding: 0;
+  background: #fff;
+}
+
+/* ─────────────── Staff / manager profile pop-up ─────────────── */
+/* Side panel details: label above the value, full width — emails and
+   addresses show in full instead of being squeezed into a pill. */
+.fd.ap.st-profile .ap-side .fd-preview-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+}
+.fd.ap.st-profile .ap-side .fd-preview-row > span {
+  padding-top: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.7);
+}
+.fd.ap.st-profile .ap-side .fd-preview-row code {
+  max-width: 100%;
+  align-self: flex-start;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+/* "At a glance": 4 tiles as 2 × 2, 3 tiles in one row — never one left alone. */
+.fd.ap.st-profile .rf-kpis {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.fd.ap.st-profile .rf-kpis:has(> :nth-child(4)) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* Settings → Branch staff: the manager's crown sits beside the role, not above it
+   (Tailwind's base makes icons block-level). */
+.st-crown {
+  display: inline-block;
+  margin-right: 4px;
+}
+.st-staff-table td {
+  vertical-align: middle;
+}
+
+/* Profile pop-up side panel: the name wraps cleanly between words. */
+.ap-id strong {
+  display: block;
+  max-width: 100%;
+  line-height: 1.25;
+}

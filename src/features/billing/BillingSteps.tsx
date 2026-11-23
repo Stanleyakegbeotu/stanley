@@ -2,7 +2,7 @@
  * Billing steps 1–4. Pure presentation + input: every calculation, ID and rule
  * comes from services/billing.ts so all steps show the same numbers.
  */
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
   ArrowRightLeft,
@@ -29,6 +29,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useApp } from "@/app/AppState";
+import { useConfig } from "@/services/config";
+import { enabledMethods, useBranches } from "@/services/org";
 import type { Branch, PaymentMethod } from "@/data/types";
 import { PAYMENT_METHODS } from "@/data/types";
 import { buildHospitalDirectory, hasPhone, hospitalKey } from "@/data/legacy";
@@ -42,6 +44,8 @@ import {
   appliedPrice,
   balanceApprovers,
   canAdjustPrices,
+  canGiveDiscount,
+  maxDiscount,
   computeBill,
   findPatients,
   patientSourceType,
@@ -501,7 +505,13 @@ export function ServicesStep({ s, set, branch, errors = {} }: StepProps) {
 
 export function PaymentStep({ s, set, branch, errors = {} }: StepProps) {
   const { user, staff } = useApp();
-  const canAdjust = canAdjustPrices(user.role);
+  // Discounts: company switch + the role's "Give discounts" permission (Settings).
+  const canAdjust = canGiveDiscount(user.role);
+  const cfg = useConfig();
+  useBranches();
+  // Payment methods offered at this branch (company default or the branch's own set).
+  const offered = enabledMethods(branch.id);
+  const splitOk = cfg.payments.split && offered.length >= 2;
   const approvers = useMemo(() => balanceApprovers(staff, branch.id, user), [staff, branch.id, user]);
   const now = new Date();
   const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -514,9 +524,15 @@ export function PaymentStep({ s, set, branch, errors = {} }: StepProps) {
   const setPay = (patch: Partial<typeof p>) => set((x) => ({ ...x, payment: { ...x.payment, ...patch } }));
   const num = (v: string) => Number(v.replace(/[^\d]/g, "")) || 0;
   const methods: { value: PayChoice; label: string; hint: string; icon: LucideIcon }[] = [
-    ...PAYMENT_METHODS.map((m) => ({ value: m as PayChoice, label: METHOD_LABEL[m], hint: m === "Cash" ? "Cash at the front desk" : m === "POS" ? "Card on the POS terminal" : "Paid by bank transfer", icon: METHOD_ICON[m] })),
-    ...(PAYMENT_METHODS.length >= 2 ? [{ value: "Split" as PayChoice, label: "Split payment", hint: "More than one method", icon: SplitSquareHorizontal }] : []),
+    ...offered.map((m) => ({ value: m as PayChoice, label: METHOD_LABEL[m], hint: m === "Cash" ? "Cash at the front desk" : m === "POS" ? "Card on the POS terminal" : "Paid by bank transfer", icon: METHOD_ICON[m] })),
+    ...(splitOk ? [{ value: "Split" as PayChoice, label: "Split payment", hint: "More than one method", icon: SplitSquareHorizontal }] : []),
   ];
+  // A method switched off in Settings can't stay selected — move to the first one offered.
+  const methodOk = p.method === "Split" ? splitOk : offered.includes(p.method as PaymentMethod);
+  useEffect(() => {
+    if (!methodOk && offered.length) setPay({ method: offered[0] });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [methodOk, offered.join("|")]);
   const statuses: { value: PayStatusChoice; label: string; hint: string; icon: LucideIcon }[] = [
     { value: "full", label: "Fully paid", hint: "Full amount received · no balance", icon: CircleCheck },
     { value: "part", label: "Part payment", hint: "Some paid · the rest stays outstanding", icon: CircleDashed },
@@ -570,7 +586,7 @@ export function PaymentStep({ s, set, branch, errors = {} }: StepProps) {
         {p.method === "Split" ? (
           <div {...fe("bl-split-wrap", errors.split)}>
             <div className="bl-split">
-              {PAYMENT_METHODS.map((m) => {
+              {offered.map((m) => {
                 const Icon = METHOD_ICON[m];
                 return (
                   <label key={m} className="bl-field">
@@ -678,7 +694,7 @@ export function PaymentStep({ s, set, branch, errors = {} }: StepProps) {
                 <span>₦</span>
                 <input inputMode="numeric" value={s.discount.amount ? s.discount.amount.toLocaleString("en-NG") : ""} placeholder="0" onChange={(e) => set((x) => ({ ...x, discount: { ...x.discount, amount: Math.min(num(e.target.value), t.subtotal) } }))} />
               </span>
-              {errors.discount ? <FieldError msg={errors.discount} /> : <small className="bl-help">Up to {money(t.subtotal)}.</small>}
+              {errors.discount ? <FieldError msg={errors.discount} /> : <small className="bl-help">Up to {money(maxDiscount(t.subtotal))}{cfg.discounts.maxPercent < 100 ? ` (${cfg.discounts.maxPercent}% of the bill — company limit)` : ""}.</small>}
             </label>
             <label {...fe("bl-field", errors.discountReason)}>
               <span className="bl-label">Reason {s.discount.amount > 0 && <i>*</i>}</span>

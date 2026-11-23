@@ -16,8 +16,8 @@ export function setAuditActor(name: string, role: string) {
 }
 import { LEGACY_BRANCH_ID, LEGACY_META } from "@/data/legacy";
 
-export type AuditCategory = "System" | "Billing" | "PR agents" | "Commission" | "Staff" | "Catalogue" | "Trash" | "Reports" | "Receipts" | "Settings";
-export const AUDIT_CATEGORIES: readonly AuditCategory[] = ["Billing", "PR agents", "Commission", "Staff", "Catalogue", "Trash", "Reports", "Receipts", "Settings", "System"];
+export type AuditCategory = "System" | "Billing" | "PR agents" | "Commission" | "Staff" | "Catalogue" | "Trash" | "Reports" | "Receipts" | "Expenses" | "Settings";
+export const AUDIT_CATEGORIES: readonly AuditCategory[] = ["Billing", "PR agents", "Commission", "Staff", "Catalogue", "Trash", "Reports", "Receipts", "Expenses", "Settings", "System"];
 
 export interface AuditEntry {
   id: string;
@@ -33,8 +33,32 @@ export interface AuditEntry {
   branchId: string | null;
 }
 
-let seq = 1;
-let entries: AuditEntry[] = [
+/*
+ * Saved on this device (owner rule: audit entries can never be deleted — so a
+ * refresh must not lose them either). Plain JSON, guarded; dates stored as ISO.
+ */
+const KEY = "stanley.audit.v1";
+function loadSaved(): AuditEntry[] | null {
+  try {
+    const raw = window.localStorage.getItem(KEY);
+    if (!raw) return null;
+    const list = JSON.parse(raw) as (Omit<AuditEntry, "at"> & { at: string })[];
+    return Array.isArray(list) && list.length ? list.map((e) => ({ ...e, at: new Date(e.at) })) : null;
+  } catch {
+    return null;
+  }
+}
+function save() {
+  try {
+    window.localStorage.setItem(KEY, JSON.stringify(entries));
+  } catch {
+    /* storage full or blocked — entries still kept for this session */
+  }
+}
+
+const saved = loadSaved();
+let seq = saved ? Math.max(1, ...saved.map((e) => Number(e.id.replace(/\D/g, "")) || 0)) : 1;
+let entries: AuditEntry[] = saved ?? [
   {
     id: "AUD-000001",
     at: new Date(LEGACY_META.exportedAt),
@@ -53,6 +77,7 @@ const listeners = new Set<() => void>();
 export function logAudit(e: { category: AuditCategory; action: string; record: string; details: string; branchId?: string | null }) {
   seq += 1;
   entries = [{ id: `AUD-${String(seq).padStart(6, "0")}`, at: new Date(), user: actor.name, role: actor.role, branchId: e.branchId ?? null, ...e }, ...entries];
+  save();
   listeners.forEach((l) => l());
 }
 

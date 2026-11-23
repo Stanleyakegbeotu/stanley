@@ -8,7 +8,7 @@
  * a real hospital). Replace this module with ledger queries once real
  * transactions are recorded.
  */
-import { ACTIVE_BRANCHES, SERVICES, servicePrice } from "../company";
+import { DEMO_BRANCHES, SERVICES, servicePrice } from "../company";
 import { LEGACY_PR_AGENTS, hospitalKey } from "../legacy";
 import type { AgingBuckets, Branch, Currency, DayRecord } from "../types";
 
@@ -247,5 +247,5 @@ function generateBranch(branch: Branch, seedIndex: number): DayRecord[] {
 
 /** branchId → day records, index 0 = DATA_START. Inactive branches have none. */
 export const DAILY: Record<string, DayRecord[]> = Object.fromEntries(
-  ACTIVE_BRANCHES.map((b, idx) => [b.id, generateBranch(b, idx)]),
+  DEMO_BRANCHES.map((b, idx) => [b.id, generateBranch(b, idx)]),
 );

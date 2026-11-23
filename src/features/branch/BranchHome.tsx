@@ -40,6 +40,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useApp } from "@/app/AppState";
+import { canOpenBranchPage } from "@/shell/navigation";
 import type { Branch, PaymentMethod } from "@/data/types";
 import { CATALOGUE_CATEGORIES, CATALOGUE_INVENTORY } from "@/data/catalogueRules";
 import { DRAFTS } from "@/data/demo/records";
@@ -100,24 +101,27 @@ export function BranchHome({ branch }: { branch: Branch }) {
   const pl = periodLabel(period).toLowerCase();
   const go = (page: string) => navigate(`/branch/${branch.id}/${page}`);
   const [viewing, setViewing] = useState<PatientVisit | null>(null);
+  // Branch staff (e.g. Front Desk) get the day-to-day dashboard: no manager monitoring sections.
+  const staffView = user.kind === "staff";
+  const can = (page: string) => canOpenBranchPage(user.role, page);
 
   return (
     <AnimatedPage>
       <WelcomeBanner
-        eyebrow={`Branch operations · ${branch.name}`}
+        eyebrow={staffView ? `${user.role} · ${branch.name} branch` : `Branch operations · ${branch.name}`}
         title={`${greeting()}, ${user.firstName}.`}
-        subtitle={`Here is the work and money picture for the ${branch.name} branch — ${whenText(pl)}.`}
+        subtitle={staffView ? `Here is today's front desk work for the ${branch.name} branch — patients, payments and balances ${whenText(pl)}.` : `Here is the work and money picture for the ${branch.name} branch — ${whenText(pl)}.`}
         summary={summary}
         range={range}
       />
-      <QuickActions go={go} />
+      <QuickActions go={go} can={can} />
       <PaymentSummary branch={branch} range={range} periodText={pl} go={go} onOpenVisit={setViewing} />
       <PaymentStatus branch={branch} range={range} periodText={pl} onOpenVisit={setViewing} />
-      <QuickStats branch={branch} range={range} periodText={pl} />
-      <CategorySummary branch={branch} range={range} periodText={pl} go={go} />
-      <ReferralSummary branch={branch} range={range} periodText={pl} go={go} />
+      {!staffView && <QuickStats branch={branch} range={range} periodText={pl} />}
+      {!staffView && <CategorySummary branch={branch} range={range} periodText={pl} go={go} />}
+      {!staffView && <ReferralSummary branch={branch} range={range} periodText={pl} go={go} />}
       <div className="bd-pair">
-        <WorkQueue branch={branch} range={range} go={go} />
+        <WorkQueue branch={branch} range={range} go={go} can={can} />
         <RecentRecords branch={branch} range={range} go={go} onOpen={setViewing} />
       </div>
       <PatientRecordModal visit={viewing} onClose={() => setViewing(null)} />
@@ -132,18 +136,18 @@ const ACTIONS: { page: string; title: string; text: string; icon: LucideIcon }[]
   { page: "expenses", title: "Expenses", text: "Record and monitor branch expenditure", icon: ReceiptText },
   { page: "records", title: "Patient Records", text: "Search and manage patient information", icon: FolderOpen },
   { page: "pr", title: "PR Management", text: "Referral partners, hospitals and performance", icon: Handshake },
-  { page: "analysis", title: "Analysis", text: "Daily financial and operational performance", icon: BarChart3 },
+  { page: "analysis", title: "Reports & Analysis", text: "Create, print and download branch reports", icon: BarChart3 },
   { page: "staff", title: "Staff Management", text: "Branch staff and their permissions", icon: Users },
   { page: "inventory", title: "Inventory", text: "Diagnostic tests, services and pricing", icon: Boxes },
   { page: "drafts", title: "Saved Drafts", text: "Continue unfinished billing work", icon: FileStack },
 ];
 
-function QuickActions({ go }: { go: (page: string) => void }) {
+function QuickActions({ go, can }: { go: (page: string) => void; can: (page: string) => boolean }) {
   const m = useMotionPreset();
   return (
     <Section eyebrow="Branch shortcuts" title="Quick Actions" description="The most important branch work, one click away.">
-      <Reveal mode="stagger" className="bd-actions">
-        {ACTIONS.map((a) => (
+      <Reveal mode="stagger" className={`bd-actions ${{ 5: "is-five", 6: "is-six" }[ACTIONS.filter((a) => can(a.page)).length] ?? ""}`}>
+        {ACTIONS.filter((a) => can(a.page)).map((a) => (
           <motion.button key={a.page} type="button" className="bd-action" variants={m.revealItem} onClick={() => go(a.page)}>
             <a.icon className="cat-mark" size={92} strokeWidth={1.3} aria-hidden="true" />
             <span className="bd-action-icon" aria-hidden="true">
@@ -753,9 +757,10 @@ function QuickStats({ branch, range, periodText }: { branch: Branch; range: Retu
     { label: "Fully paid visits", value: formatCount(d.fully), caption: `Of ${formatCount(d.visits)} visits · no balance left` },
     { label: "Patients owing", value: formatCount(d.t.openBills), caption: `${money(d.t.outstanding)} outstanding at period end`, tone: d.t.openBills ? "warn" : undefined },
     { label: "Expenses incurred", value: money(d.t.expenses), caption: "Approved expenses by date" },
-    { label: "Net profit", value: money(d.t.net), caption: "Money in − expenses − PR commission", tone: d.t.net < 0 ? "down" : undefined },
+    // Net profit is shown to the Company Admin only (owner rule) — the branch sees money in instead.
+    { label: "Money in", value: money(d.t.income), caption: "Paid at visits + balances recovered" },
     { label: "Monthly expenses", value: money(d.mo.expenses), caption: `${resolveRange({ key: "month" }).from.toLocaleDateString("en-GB", { month: "long", year: "numeric" })} to date` },
-    { label: "Monthly net profit", value: money(d.mo.net), caption: "Month to date, after expenses and commission", tone: d.mo.net < 0 ? "down" : undefined },
+    { label: "Monthly money in", value: money(d.mo.income), caption: "Month to date · paid at visits + recovered" },
   ];
   return (
     <Section eyebrow="Branch snapshot" title="Quick Stats" description={`Position ${when}. Monthly figures run to this date.`}>
@@ -768,7 +773,7 @@ function QuickStats({ branch, range, periodText }: { branch: Branch; range: Retu
           </div>
         ))}
       </div>
-      <p className="bd-note">Net profit is cash-based: money received minus approved expenses and PR commission ({rateSummary()}). It matches the Finance & Expenses page.</p>
+      <p className="bd-note">Money in is cash actually received (at visits plus balances paid back). PR commission is at {rateSummary()}. Net profit is shown to the Company Admin only.</p>
     </Section>
   );
 }
@@ -1245,7 +1250,7 @@ function ReferralModal({
 
 /* ─────────────── 7. Work queue + recent records ─────────────── */
 
-function WorkQueue({ branch, range, go }: { branch: Branch; range: ReturnType<typeof resolveRange>; go: (page: string) => void }) {
+function WorkQueue({ branch, range, go, can }: { branch: Branch; range: ReturnType<typeof resolveRange>; go: (page: string) => void; can: (page: string) => boolean }) {
   const { inventory } = useApp();
   const money = (n: number) => formatMoney(n, branch.currency, true);
   const q = useMemo(() => {
@@ -1269,7 +1274,7 @@ function WorkQueue({ branch, range, go }: { branch: Branch; range: ReturnType<ty
     { title: "Unpaid visits", text: "Nothing paid at the visit in this period", count: q.unpaid, page: "billing", icon: ReceiptText },
     { title: "Saved billing drafts", text: "Continue unfinished billing work", count: q.drafts, page: "drafts", icon: FileStack },
     { title: "Services without a price", text: "Cannot be billed until a price is set", count: noPrice, page: "inventory?filter=noprice", icon: Tag },
-  ];
+  ].filter((it) => can(it.page) && (it.icon !== Tag || can("staff")));
   return (
     <Section eyebrow="Work queue" title="What needs attention" className="is-half" action={<span className="bd-head-meta">Current branch workload</span>}>
       <ul className="bd-queue">

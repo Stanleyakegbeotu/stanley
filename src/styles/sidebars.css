@@ -1,0 +1,68 @@
+/* ───────────────────────── Scrollable sidebars (owner rule, 2026-11-22) ─────────────────────────
+   Every sidebar scrolls when its content is taller than the space it has,
+   instead of cutting content off. Loaded last so it applies to all of them:
+   form dialogs (.fd-side — also staff/agent profiles and the visit record),
+   the branch viewer (.bw-side), pop-up sidebars (.spm-side, .rcm-side), the
+   report builder (.rb-panel), the price calculator (.pc-side) and the app
+   sidebar's navigation (.sb-nav). */
+
+.fd-side,
+.bw-side,
+.spm-side,
+.rcm-side,
+.rb-panel,
+.pc-side {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.35) transparent;
+}
+
+/* Sections keep their natural height and the panel scrolls, rather than squashing them. */
+.fd-side > *,
+.bw-side > *,
+.spm-side > *,
+.rcm-side > * {
+  flex-shrink: 0;
+}
+
+.fd-side::-webkit-scrollbar,
+.bw-side::-webkit-scrollbar,
+.spm-side::-webkit-scrollbar,
+.rcm-side::-webkit-scrollbar,
+.rb-panel::-webkit-scrollbar,
+.pc-side::-webkit-scrollbar {
+  width: 8px;
+}
+.fd-side::-webkit-scrollbar-thumb,
+.bw-side::-webkit-scrollbar-thumb,
+.spm-side::-webkit-scrollbar-thumb,
+.rcm-side::-webkit-scrollbar-thumb,
+.rb-panel::-webkit-scrollbar-thumb,
+.pc-side::-webkit-scrollbar-thumb {
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.3);
+}
+.fd-side::-webkit-scrollbar-track,
+.bw-side::-webkit-scrollbar-track,
+.spm-side::-webkit-scrollbar-track,
+.rcm-side::-webkit-scrollbar-track,
+.rb-panel::-webkit-scrollbar-track,
+.pc-side::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* The form panel's decorative rings used to hang below the panel (fine while it
+   clipped, but they would add empty scroll space). Same rings, drawn as part of
+   the background instead, so they stay put while the content scrolls. */
+.fd-side::after {
+  display: none;
+}
+.fd-side {
+  background:
+    radial-gradient(circle at calc(100% + 40px) calc(100% + 60px), transparent 179px, rgba(255, 255, 255, 0.08) 180px, rgba(255, 255, 255, 0.025) 181px, rgba(255, 255, 255, 0.025) 230px, rgba(255, 255, 255, 0.02) 230px, rgba(255, 255, 255, 0.02) 280px, transparent 281px) no-repeat,
+    radial-gradient(120% 70% at 0% 0%, rgba(255, 255, 255, 0.12) 0%, transparent 55%),
+    linear-gradient(170deg, var(--banner-2) 0%, var(--banner-1) 55%, var(--sb-1) 100%);
+}

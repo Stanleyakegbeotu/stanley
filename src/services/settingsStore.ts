@@ -28,6 +28,15 @@ export interface CompanyProfile {
   rcNumber: string;
   /** Data URL of the uploaded logo (PNG / JPG / WebP / SVG), or "" for the built-in mark. */
   logo: string;
+  /** Logo printed on receipts and quotes ("" = use the main logo). */
+  receiptLogo: string;
+  registeredName: string;
+  city: string;
+  state: string;
+  country: string;
+  postalCode: string;
+  contactPerson: string;
+  description: string;
 }
 
 export interface BranchProfile {
@@ -62,6 +71,14 @@ export const DEFAULT_COMPANY: CompanyProfile = {
   owner: "",
   rcNumber: "",
   logo: "",
+  receiptLogo: "",
+  registeredName: "",
+  city: "",
+  state: "",
+  country: "Nigeria",
+  postalCode: "",
+  contactPerson: "",
+  description: "",
 };
 
 function load(): SettingsState {
@@ -127,6 +144,16 @@ export function updateProfile(key: string, patch: Partial<PersonalProfile>): boo
   return commit({ ...state, profiles: { ...state.profiles, [key]: next } });
 }
 export const profileOf = (key: string): PersonalProfile => state.profiles[key] ?? {};
+
+/**
+ * The photo to show for someone: their own upload, else their default (mock)
+ * photo. An empty string means they removed their photo — show initials.
+ */
+export function resolvePhoto(profiles: Record<string, PersonalProfile>, key: string, fallback?: string): string | undefined {
+  const p = profiles[key]?.photo;
+  if (p === undefined) return fallback;
+  return p || undefined;
+}
 
 /* ── Images ── */
 export const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/svg+xml"];

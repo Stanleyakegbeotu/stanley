@@ -14,8 +14,10 @@ import { useHashRoute, type Route } from "./router";
 import { BRANCH_MANAGER_PLACEHOLDER, CURRENT_USER, getBranch, type AppUser } from "@/data/company";
 import { LEGACY_BRANCH_ID, hospitalKey } from "@/data/legacy";
 import { logAudit, setAuditActor } from "@/services/audit";
-import { BASELINE_AGENTS, EMPTY_INVENTORY_CHANGES, applyAgentEdits, mergeAgents, nextServiceId, nextUserId, type AddedService, type AgentEdit, type AgentRecord, type BankDetails, type InventoryChanges, isManager, managerOf, nextStaffId, type StaffRecord } from "@/data/userRecords";
-import { useSettings } from "@/services/settingsStore";
+import { BASELINE_AGENTS, EMPTY_INVENTORY_CHANGES, applyAgentEdits, mergeAgents, nextServiceId, nextUserId, type AddedService, type AgentEdit, type AgentRecord, type BankDetails, type InventoryChanges, MOCK_STAFF, isManager, managerOf, nextStaffId, type StaffRecord } from "@/data/userRecords";
+import { resolvePhoto, useSettings } from "@/services/settingsStore";
+import { putBackExpense, takeExpense, type ExpenseRecord } from "@/services/expenses";
+import { restoreDraft, restoreOrder, takeDraft, takeOrder, type BillingSession, type Order } from "@/services/billing";
 import type { PeriodSelection } from "@/data/types";
 
 /* localStorage is a per-viewer convenience only; every read/write is guarded. */
@@ -72,11 +74,20 @@ interface AppStateValue {
   /** Staff created in STANLEY (session until the database is connected). */
   staff: StaffRecord[];
   addStaff: (s: Omit<StaffRecord, "id" | "createdAt">) => StaffRecord;
-  editStaff: (id: string, patch: Partial<Omit<StaffRecord, "id" | "createdAt">>) => void;
+  /** `reason` (optional) is kept in the person's history and the audit log. */
+  editStaff: (id: string, patch: Partial<Omit<StaffRecord, "id" | "createdAt">>, reason?: string) => void;
   /** Deleted records kept 30 days (only records created in STANLEY can be deleted). */
   trash: TrashItem[];
   moveStaffToTrash: (id: string, reason?: string) => void;
   moveAgentToTrash: (id: number, reason?: string) => void;
+  /** Expenses recorded in STANLEY (demo activity expenses can never be deleted). */
+  moveExpenseToTrash: (id: string, reason?: string) => void;
+  /** Unfinished bills — deleted, discarded or cancelled drafts all go here. */
+  moveDraftToTrash: (id: string, reason?: string) => void;
+  /** Bills saved in STANLEY (demo activity visits can never be deleted). */
+  moveBillToTrash: (invoiceNo: string, reason?: string) => void;
+  /** Services added in STANLEY (the legacy catalogue can never be deleted). */
+  moveServiceToTrash: (id: number, reason?: string) => void;
   restoreFromTrash: (trashId: string) => void;
   purgeFromTrash: (trashId: string) => void;
   /** Session-only inventory changes layered over the read-only legacy catalogue. */
@@ -90,7 +101,7 @@ interface AppStateValue {
 /** A deleted record and everything needed to restore it. */
 export interface TrashItem {
   id: string;
-  kind: "staff" | "agent";
+  kind: "staff" | "agent" | "expense" | "draft" | "bill" | "service";
   name: string;
   type: string;
   branchId: string;
@@ -100,9 +111,38 @@ export interface TrashItem {
   reason?: string;
   staff?: StaffRecord;
   agent?: AgentRecord;
+  expense?: ExpenseRecord;
+  draft?: BillingSession;
+  bill?: Order;
+  service?: AddedService;
 }
 
 export const TRASH_RETENTION_DAYS = 30;
+
+const STAFF_KEY = "stanley.staff.v1";
+function loadStaff(): StaffRecord[] {
+  try {
+    const raw = readStore(STAFF_KEY);
+    const list = raw ? (JSON.parse(raw) as StaffRecord[]) : null;
+    if (Array.isArray(list)) return list.map((s) => ({ ...s, photo: s.photo ?? MOCK_STAFF.find((m) => m.id === s.id)?.photo }));
+  } catch {
+    /* unreadable — start from the sample team */
+  }
+  return [...MOCK_STAFF];
+}
+
+const TRASH_KEY = "stanley.trash.v1";
+/** Saved trash, minus anything past the 30-day retention (the stated Trash policy). */
+function loadTrash(): TrashItem[] {
+  try {
+    const raw = readStore(TRASH_KEY);
+    const list = raw ? (JSON.parse(raw) as TrashItem[]) : [];
+    const cutoff = Date.now() - TRASH_RETENTION_DAYS * 86_400_000;
+    return Array.isArray(list) ? list.filter((t) => new Date(t.deletedAt).getTime() >= cutoff) : [];
+  } catch {
+    return [];
+  }
+}
 
 const STAFF_FIELD_LABEL: Partial<Record<keyof StaffRecord, string>> = { name: "Name", phone: "Phone", email: "Email", address: "Address", role: "Role", employment: "Employment", startDate: "Start date", status: "Status", notes: "Notes" };
 
@@ -142,9 +182,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     const list = applyAgentEdits(mergeAgents(userAgents), agentEdits);
     return Object.keys(agentBanks).length ? list.map((a) => (agentBanks[a.id] ? { ...a, bank: agentBanks[a.id] } : a)) : list;
   }, [userAgents, agentEdits, agentBanks]);
-  const [staff, setStaff] = useState<StaffRecord[]>([]);
+  // Saved on this device (Settings manages staff); the first run starts with the mock Abuja team — see MOCK_STAFF.
+  const [staff, setStaffState] = useState<StaffRecord[]>(loadStaff);
+  const setStaff = (list: StaffRecord[]) => {
+    setStaffState(list);
+    writeStore(STAFF_KEY, JSON.stringify(list));
+  };
   // Live copy so a new record (and its id) is known immediately, not after the next render.
-  const staffRef = useRef<StaffRecord[]>([]);
+  const staffRef = useRef<StaffRecord[]>(staff);
   /** Signed-in person (see `user` below) — read by actions such as Move to trash. */
   const userRef = useRef<AppUser>(CURRENT_USER);
   const branchLabel = (id: string | null | undefined) => (id ? `${getBranch(id)?.name ?? id} branch` : "");
@@ -155,16 +200,24 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     logAudit({ category: "Staff", action: "Staff added", record: `${created.name} (${created.id})`, details: `${created.role} at ${branchLabel(created.branchId)} · ${created.employment}, starting ${created.startDate}`, branchId: created.branchId });
     return created;
   }, []);
-  const editStaff = useCallback((id: string, patch: Partial<Omit<StaffRecord, "id" | "createdAt">>) => {
+  const editStaff = useCallback((id: string, patch: Partial<Omit<StaffRecord, "id" | "createdAt">>, reason?: string) => {
     const before = staffRef.current.find((x) => x.id === id);
-    staffRef.current = staffRef.current.map((x) => (x.id === id ? { ...x, ...patch, updatedAt: new Date().toISOString() } : x));
-    setStaff(staffRef.current);
     if (!before) return;
+    // Assignment history: transfers, role and status changes stay on the record (history and bills are never lost).
+    const at = new Date().toISOString();
+    const events: string[] = [];
+    if (patch.branchId && patch.branchId !== before.branchId) events.push(`Transferred from ${branchLabel(before.branchId)} to ${branchLabel(patch.branchId)}`);
+    if (patch.role && patch.role !== before.role) events.push(`Role: ${before.role} → ${patch.role}`);
+    if (patch.status && patch.status !== before.status) events.push(`Status: ${before.status} → ${patch.status}`);
+    const why = reason?.trim() ? ` · Reason: ${reason.trim()}` : "";
+    const history = events.length ? [...events.map((action) => ({ at, by: userRef.current.name, action: `${action}${why}` })), ...(before.history ?? [])] : before.history;
+    staffRef.current = staffRef.current.map((x) => (x.id === id ? { ...x, ...patch, history, updatedAt: at } : x));
+    setStaff(staffRef.current);
     const changes = (Object.keys(patch) as (keyof typeof patch)[])
-      .filter((k) => (patch[k] ?? "") !== (before[k] ?? ""))
-      .map((k) => `${STAFF_FIELD_LABEL[k] ?? k}: ${before[k] || "—"} → ${patch[k] || "—"}`);
+      .filter((k) => k !== "history" && (patch[k] ?? "") !== (before[k] ?? ""))
+      .map((k) => (k === "branchId" ? `Branch: ${branchLabel(before.branchId)} → ${branchLabel(patch.branchId)}` : `${STAFF_FIELD_LABEL[k] ?? k}: ${before[k] || "—"} → ${patch[k] || "—"}`));
     if (changes.length)
-      logAudit({ category: "Staff", action: patch.status && patch.status !== before.status ? `Status changed to ${patch.status}` : patch.role && patch.role !== before.role ? "Role changed" : "Staff details updated", record: `${before.name} (${id})`, details: changes.join(" · "), branchId: before.branchId });
+      logAudit({ category: "Staff", action: patch.branchId && patch.branchId !== before.branchId ? "Staff transferred" : patch.status && patch.status !== before.status ? `Status changed to ${patch.status}` : patch.role && patch.role !== before.role ? "Role changed" : "Staff details updated", record: `${before.name} (${id})`, details: changes.join(" · ") + why, branchId: patch.branchId ?? before.branchId });
   }, []);
   const setAgentBank = useCallback(
     (id: number, bank: Omit<BankDetails, "at"> | null) => {
@@ -219,11 +272,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   );
 
   /* ── Trash: only records created in STANLEY can be deleted (the legacy baseline never is) ── */
-  const [trash, setTrash] = useState<TrashItem[]>([]);
-  const trashRef = useRef<TrashItem[]>([]);
+  // Trash is saved on this device (drafts and bills are too), so a refresh never loses a deleted record.
+  const [trash, setTrash] = useState<TrashItem[]>(loadTrash);
+  const trashRef = useRef<TrashItem[]>(trash);
   const commitTrash = (list: TrashItem[]) => {
     trashRef.current = list;
     setTrash(list);
+    writeStore(TRASH_KEY, JSON.stringify(list));
   };
   const moveStaffToTrash = useCallback((id: string, reason?: string) => {
     const s = staffRef.current.find((x) => x.id === id);
@@ -251,8 +306,44 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setStaff(staffRef.current);
     }
     if (t.agent) setUserAgents((list) => [...list, t.agent!]);
+    if (t.expense) putBackExpense(t.expense);
+    if (t.draft) restoreDraft(t.draft);
+    if (t.bill) restoreOrder(t.bill);
+    if (t.service) {
+      const svc = t.service;
+      setInventory((inv) => (inv.added.some((s) => s.id === svc.id) ? inv : { ...inv, added: [...inv.added, svc] }));
+    }
     commitTrash(trashRef.current.filter((x) => x.id !== trashId));
     logAudit({ category: "Trash", action: "Restored from trash", record: t.name, details: t.type, branchId: t.branchId });
+  }, []);
+  const moveExpenseToTrash = useCallback((id: string, reason?: string) => {
+    const e = takeExpense(id);
+    if (!e) return;
+    commitTrash([{ id: `TR-${Date.now()}`, kind: "expense", name: e.description, type: `Expense · ${e.status}`, branchId: e.branchId, deletedBy: userRef.current.name, deletedAt: new Date().toISOString(), reason: reason?.trim() || undefined, expense: e }, ...trashRef.current]);
+    logAudit({ category: "Trash", action: "Moved to trash", record: `${e.description} (${e.id})`, details: `Expense · ₦${e.amount.toLocaleString("en-NG")} · ${e.status}${reason?.trim() ? ` · Reason: ${reason.trim()}` : ""} · kept 30 days`, branchId: e.branchId });
+  }, []);
+  const toTrash = (item: Omit<TrashItem, "id" | "deletedBy" | "deletedAt" | "reason">, reason?: string, extra = "") => {
+    commitTrash([{ ...item, id: `TR-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, deletedBy: userRef.current.name, deletedAt: new Date().toISOString(), reason: reason?.trim() || undefined }, ...trashRef.current]);
+    logAudit({ category: "Trash", action: "Moved to trash", record: item.name, details: `${item.type}${extra}${reason?.trim() ? ` · Reason: ${reason.trim()}` : ""} · kept 30 days`, branchId: item.branchId });
+  };
+  const moveDraftToTrash = useCallback((id: string, reason?: string) => {
+    const d = takeDraft(id);
+    if (!d) return;
+    toTrash({ kind: "draft", name: d.patient.name.trim() || "Unnamed patient", type: `Billing draft · step ${d.step} of 5 · ${d.services.length} test${d.services.length === 1 ? "" : "s"}`, branchId: d.branchId, draft: d }, reason);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const moveBillToTrash = useCallback((invoiceNo: string, reason?: string) => {
+    const o = takeOrder(invoiceNo);
+    if (!o) return;
+    toTrash({ kind: "bill", name: `${o.invoiceNo} · ${o.patient.name}`, type: `Bill · ₦${o.total.toLocaleString("en-NG")} · ${o.services.length} test${o.services.length === 1 ? "" : "s"}`, branchId: o.branchId, bill: o }, reason, ` · patient ${o.patient.patientId}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const moveServiceToTrash = useCallback((id: number, reason?: string) => {
+    const taken = inventoryRef.current.added.find((s) => s.id === id);
+    if (!taken) return;
+    setInventory((inv) => ({ ...inv, added: inv.added.filter((s) => s.id !== id) }));
+    toTrash({ kind: "service", name: `${taken.name} (#${taken.id})`, type: `Service · ${taken.category} · ₦${taken.price.toLocaleString("en-NG")}`, branchId: LEGACY_BRANCH_ID, service: taken }, reason);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const purgeFromTrash = useCallback((trashId: string) => {
     const t = trashRef.current.find((x) => x.id === trashId);
@@ -261,6 +352,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     logAudit({ category: "Trash", action: "Deleted permanently", record: t.name, details: `${t.type} · cannot be restored`, branchId: t.branchId });
   }, []);
   const [inventory, setInventory] = useState<InventoryChanges>(EMPTY_INVENTORY_CHANGES);
+  const inventoryRef = useRef(inventory);
+  inventoryRef.current = inventory;
   const renameCategory = useCallback((key: string, name: string) => {
     setInventory((inv) => {
       const categoryNames = { ...inv.categoryNames };
@@ -378,7 +471,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     const withProfile = (base: AppUser): AppUser => {
       const p = profiles[base.key] ?? {};
       const name = p.name?.trim() || base.name;
-      return { ...base, name, firstName: first(name), email: p.email?.trim() || base.email, phone: p.phone ?? base.phone, address: p.address ?? base.address, photo: p.photo };
+      return { ...base, name, firstName: p.name?.trim() ? first(name) : base.firstName, email: p.email?.trim() || base.email, phone: p.phone ?? base.phone, address: p.address ?? base.address, photo: resolvePhoto(profiles, base.key, base.photo) };
     };
     if (!branchId) return withProfile(CURRENT_USER);
     const fromStaff = (s: StaffRecord, kind: AppUser["kind"]): AppUser => ({
@@ -392,12 +485,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       key: s.id,
       staffId: s.id,
       branchId,
-      photo: profiles[s.id]?.photo,
+      photo: resolvePhoto(profiles, s.id, s.photo),
     });
     const picked = staff.find((s) => s.id === actingAs[branchId] && s.branchId === branchId && s.status !== "Left" && s.status !== "Suspended");
     if (picked) return fromStaff(picked, isManager(picked) ? "manager" : "staff");
     const m = managerOf(staff, branchId);
-    return m ? fromStaff(m, "manager") : withProfile({ ...BRANCH_MANAGER_PLACEHOLDER, key: `placeholder-manager:${branchId}`, branchId });
+    if (m) return fromStaff(m, "manager");
+    // No manager yet: the legacy branch keeps its named placeholder; a new branch shows a neutral one.
+    const placeholder = branchId === LEGACY_BRANCH_ID ? BRANCH_MANAGER_PLACEHOLDER : { ...BRANCH_MANAGER_PLACEHOLDER, name: "Branch Manager (not assigned)", firstName: "Manager" };
+    return withProfile({ ...placeholder, key: `placeholder-manager:${branchId}`, branchId });
   }, [branchId, staff, actingAs, profiles]);
   userRef.current = user;
   setAuditActor(user.name, user.role);
@@ -450,6 +546,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       trash,
       moveStaffToTrash,
       moveAgentToTrash,
+      moveExpenseToTrash,
+      moveDraftToTrash,
+      moveBillToTrash,
+      moveServiceToTrash,
       restoreFromTrash,
       purgeFromTrash,
       inventory,
@@ -458,7 +558,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       revertService,
       addService,
     }),
-    [user, switchAccount, theme, setTheme, collapsed, setCollapsed, context, period, route, navigate, toast, showToast, assistantOpen, assistantQuestion, askAssistant, signOutOpen, agents, userAgents, addAgent, agentEdits, editAgent, revertAgent, agentBanks, setAgentBank, staff, addStaff, editStaff, trash, moveStaffToTrash, moveAgentToTrash, restoreFromTrash, purgeFromTrash, inventory, renameCategory, editService, revertService, addService],
+    [user, switchAccount, theme, setTheme, collapsed, setCollapsed, context, period, route, navigate, toast, showToast, assistantOpen, assistantQuestion, askAssistant, signOutOpen, agents, userAgents, addAgent, agentEdits, editAgent, revertAgent, agentBanks, setAgentBank, staff, addStaff, editStaff, trash, moveStaffToTrash, moveAgentToTrash, moveExpenseToTrash, moveDraftToTrash, moveBillToTrash, moveServiceToTrash, restoreFromTrash, purgeFromTrash, inventory, renameCategory, editService, revertService, addService],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

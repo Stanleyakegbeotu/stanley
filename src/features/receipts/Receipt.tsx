@@ -64,7 +64,7 @@ export function ReceiptDoc({ visit, branch, agentName, hospital, profile, paper,
       {/* Company */}
       <header className="rc-head">
         <div className="rc-logo">
-          <BrandLogo />
+          <BrandLogo receipt />
         </div>
         <div className="rc-co">{companyName}</div>
         {profile.motto && <div className="rc-motto">“{profile.motto}”</div>}

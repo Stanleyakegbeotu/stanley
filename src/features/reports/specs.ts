@@ -36,6 +36,8 @@ export interface ReportParams {
 
 export interface ReportCtx {
   agents: readonly AgentRecord[];
+  /** Owner rule: only the Company Admin sees net profit / margin — reports for anyone else leave them out. */
+  hideProfit?: boolean;
 }
 
 export interface VariantDef {
@@ -105,6 +107,12 @@ const pct = (part: number, whole: number) => (whole > 0 ? num(`${((part / whole)
 const COMPANY_NAME = COMPANY.name;
 const AGENT_BRANCH = getBranch(LEGACY_BRANCH_ID);
 
+/** Who is creating the report (set by the builder from the signed-in user). */
+let preparer = "Company Admin";
+export function setReportPreparer(name: string, role: string) {
+  preparer = role && role !== name ? `${name} · ${role}` : name;
+}
+
 function baseMeta(spec: ReportSpec, p: ReportParams, extra: { label: string; value: string }[] = []) {
   const v = spec.variants.find((x) => x.id === p.variant);
   return [
@@ -112,7 +120,7 @@ function baseMeta(spec: ReportSpec, p: ReportParams, extra: { label: string; val
     ...(v?.dated === false ? [] : [{ label: "Period", value: rangeLabel(p.range) }]),
     { label: "Branch", value: branchLabel(p) },
     { label: "Generated", value: `${day(new Date())} · ${formatTime(new Date())}` },
-    { label: "Prepared by", value: "Company Admin" },
+    { label: "Prepared by", value: preparer },
     ...extra,
   ];
 }
@@ -158,7 +166,7 @@ const REVENUE: ReportSpec = {
   ],
   suggestPaper: (p) => (p.variant === "summary" ? { size: "A4", orientation: "portrait" } : { size: "A4", orientation: "landscape" }),
   build(p, ctx) {
-    void ctx;
+    const hide = !!ctx.hideProfit;
     const ids = branchIdsOf(p);
     const blocks: Block[] = [];
     const multi = ids.length > 1;
@@ -177,8 +185,12 @@ const REVENUE: ReportSpec = {
           items: [
             { label: "Total income", value: formatMoney(all.income, c0) },
             { label: "Total expenses", value: formatMoney(all.costs, c0) },
-            { label: "Net profit", value: formatMoney(all.net, c0), tone: all.net < 0 ? "bad" : "good" },
-            { label: "Profit margin", value: all.income ? `${((all.net / all.income) * 100).toFixed(1)}%` : "—" },
+            ...(hide
+              ? [{ label: "Revenue billed", value: formatMoney(all.billed, c0) }]
+              : [
+                  { label: "Net profit", value: formatMoney(all.net, c0), tone: (all.net < 0 ? "bad" : "good") as "bad" | "good" },
+                  { label: "Profit margin", value: all.income ? `${((all.net / all.income) * 100).toFixed(1)}%` : "—" },
+                ]),
           ],
         });
       const cols: Column[] = [{ key: "item", label: "Item", weight: 2.4 }, ...per.map((x) => ({ key: x.id, label: getBranch(x.id)?.name ?? x.id, align: "right" as const })), ...(multi && sameCur ? [{ key: "total", label: "All branches", align: "right" as const }] : [])];
@@ -200,16 +212,22 @@ const REVENUE: ReportSpec = {
         ...EXPENSE_CATEGORIES.map((cat, i) => line(cat, (t) => t.expensesByCategory[i].value)),
         line(`PR commission (${rateSummary()})`, (t) => t.commission),
         line("Total expenses", (t) => t.costs, { b: true }),
-        sect("Result"),
-        line("Net profit", (t) => t.net, { b: true }),
-        [txt("Profit margin"), ...per.map((x) => (x.t.margin === null ? txt("—") : num(`${x.t.margin.toFixed(1)}%`, Math.round(x.t.margin * 10) / 10))), ...(multi && sameCur ? [pct(all.net, all.income)] : [])],
+        ...(hide
+          ? [sect("Balances")]
+          : [
+              sect("Result"),
+              line("Net profit", (t) => t.net, { b: true }),
+              [txt("Profit margin"), ...per.map((x) => (x.t.margin === null ? txt("—") : num(`${x.t.margin.toFixed(1)}%`, Math.round(x.t.margin * 10) / 10))), ...(multi && sameCur ? [pct(all.net, all.income)] : [])],
+            ]),
         line("Outstanding at period end", (t) => t.outstanding),
       ];
-      blocks.push({ kind: "table", title: "Profit & loss statement", subtitle: rangeLabel(p.range), columns: cols, rows });
+      blocks.push({ kind: "table", title: hide ? "Income & expenses statement" : "Profit & loss statement", subtitle: rangeLabel(p.range), columns: cols, rows });
       if (p.options.explain)
         blocks.push({
           kind: "note",
-          text: "Income is money actually received: paid by patients at their visit plus older balances paid back. Expenses are approved operating costs plus PR commission (placeholder rate until confirmed). Net profit = income − expenses. Revenue billed and outstanding balances are shown for reference and are not added into profit.",
+          text: hide
+            ? "Income is money actually received: paid by patients at their visit plus older balances paid back. Expenses are approved operating costs plus PR commission (placeholder rate until confirmed). Net profit is shown to the Company Admin only."
+            : "Income is money actually received: paid by patients at their visit plus older balances paid back. Expenses are approved operating costs plus PR commission (placeholder rate until confirmed). Net profit = income − expenses. Revenue billed and outstanding balances are shown for reference and are not added into profit.",
         });
     }
 
@@ -225,7 +243,7 @@ const REVENUE: ReportSpec = {
         { key: "in", label: "Income", align: "right" },
         { key: "ex", label: "Expenses", align: "right" },
         { key: "cm", label: "PR commission", align: "right" },
-        { key: "np", label: "Net profit", align: "right" },
+        ...(hide ? [] : [{ key: "np", label: "Net profit", align: "right" as const }]),
       ];
       const rows: Cell[][] = [];
       const tot = { p: 0, bl: 0, pv: 0, rc: 0, ex: 0, cm: 0 };
@@ -248,7 +266,7 @@ const REVENUE: ReportSpec = {
         }
         for (const g of groups.values()) {
           const net = g.pv + g.rc - g.ex - g.cm;
-          rows.push([txt(g.label), ...(multi ? [txt(getBranch(id)?.name ?? id)] : []), count(g.p), money(g.bl, c), money(g.pv, c), money(g.rc, c), money(g.pv + g.rc, c, { b: true }), money(g.ex, c), money(g.cm, c), money(net, c, { b: true, tone: net < 0 ? "bad" : undefined })]);
+          rows.push([txt(g.label), ...(multi ? [txt(getBranch(id)?.name ?? id)] : []), count(g.p), money(g.bl, c), money(g.pv, c), money(g.rc, c), money(g.pv + g.rc, c, { b: true }), money(g.ex, c), money(g.cm, c), ...(hide ? [] : [money(net, c, { b: true, tone: net < 0 ? "bad" : undefined })])]);
           tot.p += g.p;
           tot.bl += g.bl;
           tot.pv += g.pv;
@@ -263,7 +281,7 @@ const REVENUE: ReportSpec = {
         title: monthly ? "Monthly income & expenses" : "Daily income & expenses",
         columns: cols,
         rows,
-        total: sameCur ? [txt("Total", { b: true }), ...(multi ? [txt("")] : []), count(tot.p), money(tot.bl, c0), money(tot.pv, c0), money(tot.rc, c0), money(tot.pv + tot.rc, c0), money(tot.ex, c0), money(tot.cm, c0), money(net, c0, { tone: net < 0 ? "bad" : undefined })] : undefined,
+        total: sameCur ? [txt("Total", { b: true }), ...(multi ? [txt("")] : []), count(tot.p), money(tot.bl, c0), money(tot.pv, c0), money(tot.rc, c0), money(tot.pv + tot.rc, c0), money(tot.ex, c0), money(tot.cm, c0), ...(hide ? [] : [money(net, c0, { tone: net < 0 ? "bad" : undefined })])] : undefined,
       });
     }
 
@@ -330,7 +348,9 @@ const REVENUE: ReportSpec = {
       });
     }
 
-    return { title: "Revenue report", subtitle: `${REVENUE.variants.find((v) => v.id === p.variant)?.label} · ${branchLabel(p)} · ${rangeLabel(p.range)}`, meta: baseMeta(REVENUE, p), blocks, footnote: FOOT_DEMO, filename: fileName(REVENUE, p) };
+    // Branch roles never see "profit" — the summary is their income & expenses statement.
+    const vLabel = hide && p.variant === "summary" ? "Income & expenses summary" : REVENUE.variants.find((v) => v.id === p.variant)?.label;
+    return { title: "Revenue report", subtitle: `${vLabel} · ${branchLabel(p)} · ${rangeLabel(p.range)}`, meta: baseMeta(REVENUE, p).map((m) => (m.label === "Report" ? { ...m, value: vLabel ?? m.value } : m)), blocks, footnote: FOOT_DEMO, filename: fileName(REVENUE, p) };
   },
 };
 
@@ -537,7 +557,7 @@ function buildPayout(p: ReportParams, ctx: ReportCtx): ReportDoc {
       { label: "Branch", value: `${AGENT_BRANCH?.name ?? ""} · ${AGENT_BRANCH?.code ?? ""}` },
       { label: "Commission rate", value: rateSummary() },
       { label: "Generated", value: `${day(new Date())} · ${formatTime(new Date())}` },
-      { label: "Prepared by", value: "Company Admin" },
+      { label: "Prepared by", value: preparer },
     ],
     blocks,
     footnote: "PR commission payout · check account details before paying.",

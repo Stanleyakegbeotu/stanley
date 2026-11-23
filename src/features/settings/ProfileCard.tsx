@@ -86,7 +86,8 @@ export function ProfileCard({ user, managedBy }: { user: AppUser; managedBy: str
   const [editing, setEditing] = useState(false);
   const branch = user.branchId ? getBranch(user.branchId) : undefined;
   const setPhoto = (photo: string) => {
-    updateProfile(user.key, { photo: photo || undefined });
+    // "" = removed on purpose (so a default photo doesn't come back).
+    updateProfile(user.key, { photo });
     logAudit({ category: "Settings", action: photo ? (user.photo ? "Profile photo replaced" : "Profile photo added") : "Profile photo removed", record: `${user.name}${user.staffId ? ` (${user.staffId})` : ""}`, details: `${user.role} · own profile`, branchId: user.branchId ?? null });
     showToast(photo ? "Profile photo saved" : "Profile photo removed");
   };
@@ -97,10 +98,10 @@ export function ProfileCard({ user, managedBy }: { user: AppUser; managedBy: str
   ];
 
   return (
-    <div className="st-profile">
+    <div className="pf-card">
       <div className="st-profile-head">
         <div className="st-profile-photo">
-          <UserAvatar name={user.name} photo={user.photo} className="st-avatar" />
+          <UserAvatar name={user.name} photo={user.photo} className="pf-avatar" />
           <span className="st-photo-badge" aria-hidden="true">
             <Camera size={14} />
           </span>

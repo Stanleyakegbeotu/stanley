@@ -15,10 +15,13 @@ import { agentRanking, byBranch, doctorRanking, hospitalRanking, periodLabel, re
 import { LEGACY_BRANCH_ID, buildHospitalDirectory } from "@/data/legacy";
 import { AuditView, Panel, PRView, StaffBranchPicker, TrashView, type Scope } from "@/features/shared/views";
 import { PageHero } from "@/features/shared/PageHero";
-import { AddAgentDialog, AddBranchDialog, AddServiceDialog, AddStaffDialog } from "@/features/shared/createForms";
+import { AddAgentDialog, AddServiceDialog, AddStaffDialog } from "@/features/shared/createForms";
+import { NewBranchDialog } from "@/features/settings/admin/Branches";
+import { useBranches } from "@/services/org";
 import { PatientDirectory } from "@/features/patients/PatientDirectory";
 import { FinanceWorkspace, type LogType } from "@/features/finance/FinanceWorkspace";
 import { ReportsHome } from "@/features/reports/ReportsHome";
+import { AnalysisPanel } from "@/features/reports/AnalysisPanel";
 import { StaffBranchView } from "@/features/staff/StaffWorkspace";
 import { AuditLogView, TrashLogView } from "@/features/admin/AdminLogs";
 import { managerOf } from "@/data/userRecords";
@@ -37,6 +40,8 @@ function useScope(): { scope: Scope; scopeLabel: string } {
 /* ─────────────── Branches ─────────────── */
 export function BranchesPage() {
   const { period } = useApp();
+  // Re-render when a branch is added or its status changes (Settings → Branch Management).
+  useBranches();
   const m = useMotionPreset();
   const [adding, setAdding] = useState(false);
   const [viewing, setViewing] = useState<string | null>(null);
@@ -91,7 +96,7 @@ export function BranchesPage() {
         </motion.button>
       </Reveal>
 
-      <AddBranchDialog open={adding} onClose={() => setAdding(false)} />
+      {adding && <NewBranchDialog open onClose={() => setAdding(false)} />}
       <BranchWorkspace branchId={viewing} open={viewing !== null} onClose={() => setViewing(null)} />
     </AnimatedPage>
   );
@@ -820,6 +825,7 @@ export function ReportsPage() {
   return (
     <AnimatedPage>
       <PageHero eyebrow={`Reports & exports · ${scopeLabel}`} title="Reports" period={false} stats="reports" />
+      <AnalysisPanel ids={scope ?? ACTIVE_BRANCHES.map((b) => b.id)} level="admin" scopeLabel={scopeLabel} />
       <ReportsHome initialBranch={scope?.[0]} />
     </AnimatedPage>
   );

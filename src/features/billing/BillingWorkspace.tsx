@@ -12,7 +12,8 @@
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeft, ArrowRight, Copy, CreditCard, FilePlus2, FileStack, FlaskConical, Hash, Link2, Trash2, TriangleAlert, UserRound, type LucideIcon } from "lucide-react";
+import { ArrowLeft, ArrowRight, Copy, CreditCard, FilePlus2, FileStack, FlaskConical, Hash, Link2, Search, Trash2, TriangleAlert, UserRound, type LucideIcon } from "lucide-react";
+import { MoveToTrashDialog } from "@/features/admin/AdminLogs";
 import { useApp } from "@/app/AppState";
 import { setNavigationGuard } from "@/app/navGuard";
 import type { Branch } from "@/data/types";
@@ -27,9 +28,8 @@ import { PageHero } from "@/features/shared/PageHero";
 import {
 
   branchPrefix,
-  canAdjustPrices,
   computeBill,
-  deleteDraft,
+  draftsForPatient,
   duplicateWarnings,
   hasContent,
   lookupReferral,
@@ -53,9 +53,14 @@ const EDIT_ICON: Record<1 | 2 | 3, LucideIcon> = { 1: UserRound, 2: FlaskConical
 const NEXT_LABEL = ["Continue to services", "Continue to payment", "Continue to preview", "Complete billing & view receipt"];
 
 export function BillingWorkspace({ branch }: { branch: Branch }) {
-  const { user, agents, route, navigate, showToast } = useApp();
+  const { user, agents, route, navigate, showToast, moveDraftToTrash } = useApp();
   const store = useBilling();
   const [session, setSession] = useState<BillingSession | null>(null);
+  const me = { name: user.name, role: user.role };
+  /** "Start new" was pressed while drafts exist — offer them first. */
+  const [draftPrompt, setDraftPrompt] = useState(false);
+  /** Same-patient drafts the user chose to ignore for this bill. */
+  const [dismissed, setDismissed] = useState<string[]>([]);
   const [order, setOrder] = useState<Order | null>(null);
   /** Errors that don't belong to one field (e.g. the save failed). */
   const [errors, setErrors] = useState<string[]>([]);
@@ -80,7 +85,18 @@ export function BillingWorkspace({ branch }: { branch: Branch }) {
   useEffect(() => {
     if (!draftParam) return;
     const d = store.drafts.find((x) => x.id === draftParam && x.branchId === branch.id);
+    // Keep whatever was being worked on before switching to the resumed draft.
+    const cur = latest.current;
+    if (cur && cur.id !== draftParam && cur.step < 5 && hasContent(cur)) saveDraft(cur);
+    if (!d) {
+      setSession(null);
+      setNotice(null);
+      showToast("That draft is no longer available — it was completed or moved to Trash");
+      navigate(`/branch/${branch.id}/billing`);
+      return;
+    }
     if (d) {
+      setDismissed([]);
       setSession(d);
       setLastSaved(d.lastSaved);
       setOrder(null);
@@ -144,6 +160,8 @@ export function BillingWorkspace({ branch }: { branch: Branch }) {
   }, [session]);
   const start = (s: BillingSession) => {
     skipSave.current = false;
+    setDraftPrompt(false);
+    setDismissed([]);
     setOrder(null);
     setErrors([]);
     setFieldErrs({});
@@ -221,7 +239,7 @@ export function BillingWorkspace({ branch }: { branch: Branch }) {
         return;
       }
     }
-    const r = submitBilling(s, agents, user, canAdjustPrices(user.role));
+    const r = submitBilling(s, agents, user);
     if (!r.ok) {
       setErrors([r.error]);
       return;
@@ -307,7 +325,7 @@ export function BillingWorkspace({ branch }: { branch: Branch }) {
       />
 
       {!session ? (
-        <Landing branch={branch} drafts={drafts} onNew={() => start(newSession(branch.id, "new"))} onReferral={() => setRefOpen(true)} onResume={(d) => start(d)} />
+        <Landing branch={branch} drafts={drafts} onNew={() => (drafts.length ? setDraftPrompt(true) : start(newSession(branch.id, "new", me)))} onReferral={() => setRefOpen(true)} onResume={(d) => start(d)} />
       ) : (
         <>
           <nav className="bl-stepper" aria-label="Billing steps">
@@ -367,6 +385,24 @@ export function BillingWorkspace({ branch }: { branch: Branch }) {
             </p>
           )}
 
+          {session.step < 5 && (
+            <SamePatientDrafts
+              drafts={draftsForPatient(branch.id, session.patient, session.id).filter((d) => !dismissed.includes(d.id))}
+              money={money}
+              onResume={(d) => {
+                // This new bill duplicates an unfinished one for the same patient: keep it in Trash (recoverable) and continue the earlier draft.
+                if (hasContent(session)) {
+                  saveDraft(session);
+                  moveDraftToTrash(session.id, `Duplicate — continued the earlier draft for ${d.patient.name.trim() || "this patient"}`);
+                }
+                start(d);
+                setLastSaved(d.lastSaved);
+                setNotice(`Draft resumed — saved ${d.lastSaved ? formatRelative(new Date(d.lastSaved)) : "earlier"}. The bill you had just started is in Trash if you need it.`);
+              }}
+              onDismiss={(id) => setDismissed((x) => [...x, id])}
+            />
+          )}
+
           {session.step === 1 && <PatientStep s={session} set={set} branch={branch} errors={fieldErrs} />}
           {session.step === 2 && <ServicesStep s={session} set={set} branch={branch} errors={fieldErrs} />}
           {session.step === 3 && <PaymentStep s={session} set={set} branch={branch} errors={fieldErrs} />}
@@ -375,7 +411,7 @@ export function BillingWorkspace({ branch }: { branch: Branch }) {
             <ReceiptStep
               order={order}
               branch={branch}
-              onNew={() => start(newSession(branch.id, "new"))}
+              onNew={() => start(newSession(branch.id, "new", me))}
               onDone={() => {
                 reset();
               }}
@@ -439,7 +475,7 @@ export function BillingWorkspace({ branch }: { branch: Branch }) {
           branch={branch}
           onClose={() => setRefOpen(false)}
           onFound={(m, referralId) => {
-            const s = newSession(branch.id, "referral");
+            const s = newSession(branch.id, "referral", me);
             const ready = m.services.length > 0;
             start({
               ...s,
@@ -488,7 +524,7 @@ export function BillingWorkspace({ branch }: { branch: Branch }) {
         open={!!leaveTo}
         onClose={() => setLeaveTo(null)}
         title="Leave this bill?"
-        description="This bill is not complete. Keep it as a draft to finish later, or discard it."
+        description="This bill is not complete. Keep it as a draft to finish later, or discard it (it goes to Trash for 30 days)."
         footer={
           <>
             <Button variant="secondary" onClick={() => setLeaveTo(null)}>
@@ -498,8 +534,10 @@ export function BillingWorkspace({ branch }: { branch: Branch }) {
               variant="secondary"
               onClick={() => {
                 const to = leaveTo!;
-                if (session) deleteDraft(session.id, { release: true });
-                if (session?.reservedId) releasePatientId(session.reservedId);
+                if (session && hasContent(session)) {
+                  saveDraft(session);
+                  moveDraftToTrash(session.id, "Discarded when leaving billing");
+                } else if (session?.reservedId) releasePatientId(session.reservedId);
                 skipSave.current = true;
                 guardOff.current?.();
                 setLeaveTo(null);
@@ -526,12 +564,38 @@ export function BillingWorkspace({ branch }: { branch: Branch }) {
         <p className="bl-modal-text">Drafts keep the patient, reserved Patient ID, services, prices and payment details. Find them under Drafts.</p>
       </Modal>
 
+      {/* "Start new" while unfinished bills exist: offer them first */}
+      <Modal
+        open={draftPrompt}
+        onClose={() => setDraftPrompt(false)}
+        icon={FileStack}
+        title={`${drafts.length} unfinished bill${drafts.length === 1 ? " is" : "s are"} waiting`}
+        description="If this patient already has a bill in progress, continue it instead of starting again — the details, tests and payment are kept."
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setDraftPrompt(false)}>
+              Back
+            </Button>
+            <Button onClick={() => start(newSession(branch.id, "new", me))}>
+              <FilePlus2 size={16} /> Start a new bill
+            </Button>
+          </>
+        }
+      >
+        <ul className="bl-drafts is-prompt">
+          {drafts.slice(0, 6).map((d) => (
+            <DraftRow key={d.id} d={d} money={money} onResume={() => start(d)} />
+          ))}
+        </ul>
+        {drafts.length > 6 && <p className="bl-help">+ {drafts.length - 6} more on the Drafts page.</p>}
+      </Modal>
+
       {/* Cancel billing */}
       <Modal
         open={confirmCancel}
         onClose={() => setConfirmCancel(false)}
         title="Cancel this bill?"
-        description="Everything entered for this bill will be discarded and its draft deleted. The reserved Patient ID is released."
+        description="The bill is moved to Trash — restore it from there within 30 days if this was a mistake. The reserved Patient ID is released."
         footer={
           <>
             <Button variant="secondary" onClick={() => setConfirmCancel(false)}>
@@ -541,13 +605,13 @@ export function BillingWorkspace({ branch }: { branch: Branch }) {
               variant="danger"
               onClick={() => {
                 if (session) {
-                  deleteDraft(session.id, { release: true });
-                  releasePatientId(session.reservedId);
+                  saveDraft(session);
+                  moveDraftToTrash(session.id, "Bill cancelled");
                 }
                 skipSave.current = true;
                 setConfirmCancel(false);
                 reset();
-                showToast("Bill cancelled");
+                showToast("Bill cancelled — moved to Trash");
               }}
             >
               Cancel bill
@@ -620,6 +684,24 @@ function Landing({ branch, drafts, onNew, onReferral, onResume }: { branch: Bran
   const money = (n: number) => formatMoney(n, branch.currency);
   return (
     <>
+      {drafts.length > 0 && (
+        <div className="bl-draft-alert" role="status">
+          <span className="bl-draft-alert-icon" aria-hidden="true">
+            <FileStack size={20} />
+          </span>
+          <span className="bl-draft-alert-text">
+            <b>
+              {drafts.length} unfinished bill{drafts.length === 1 ? "" : "s"} saved as draft{drafts.length === 1 ? "" : "s"}
+            </b>
+            <small>
+              Latest: {drafts[0].patient.name.trim() || "Unnamed patient"} · step {drafts[0].step} of 5 · {drafts[0].lastSaved ? `saved ${formatRelative(new Date(drafts[0].lastSaved))}` : ""}. If the patient is back, continue their draft instead of starting again.
+            </small>
+          </span>
+          <button type="button" className="bl-btn is-primary" onClick={() => onResume(drafts[0])}>
+            Continue latest <ArrowRight size={15} />
+          </button>
+        </div>
+      )}
       <section className="bl-card bl-start">
         <span className="bl-pill">New billing session</span>
         <h2>Start patient billing</h2>
@@ -682,11 +764,17 @@ export function DraftRow({ d, money, onResume, onDelete }: { d: BillingSession; 
         <small>
           {d.patient.existingId ?? d.reservedId ?? "No Patient ID yet"} · step {d.step} of 5 ({STEPS[d.step - 1]}) · {d.services.length} test{d.services.length === 1 ? "" : "s"}
           {d.services.length ? ` · ${money(t.total)}` : ""}
+          {d.startedBy ? ` · started by ${d.startedBy.name}` : ""}
         </small>
+        <span className="bl-draft-progress" aria-label={`Step ${d.step} of 5`}>
+          {[1, 2, 3, 4].map((n) => (
+            <i key={n} className={n < d.step ? "is-done" : n === d.step ? "is-current" : ""} />
+          ))}
+        </span>
       </span>
       <small className="bl-draft-time">{d.lastSaved ? `Saved ${formatRelative(new Date(d.lastSaved))}` : ""}</small>
       {onDelete && (
-        <button type="button" className="bl-icon-btn" onClick={onDelete} aria-label="Delete draft">
+        <button type="button" className="bl-icon-btn" onClick={onDelete} aria-label="Move draft to trash" title="Move to trash">
           <Trash2 size={15} />
         </button>
       )}
@@ -694,6 +782,44 @@ export function DraftRow({ d, money, onResume, onDelete }: { d: BillingSession; 
         Resume <ArrowRight size={14} />
       </button>
     </li>
+  );
+}
+
+/* ─────────────── "A draft already exists for this patient" ─────────────── */
+
+function SamePatientDrafts({ drafts, money, onResume, onDismiss }: { drafts: BillingSession[]; money: (n: number) => string; onResume: (d: BillingSession) => void; onDismiss: (id: string) => void }) {
+  if (!drafts.length) return null;
+  return (
+    <section className="bl-same-draft" role="status" aria-live="polite">
+      <header>
+        <span className="bl-draft-alert-icon" aria-hidden="true">
+          <FileStack size={18} />
+        </span>
+        <div>
+          <b>This patient already has an unfinished bill</b>
+          <small>Continue that draft to keep its tests and payment — or keep going with this new bill.</small>
+        </div>
+      </header>
+      <ul className="bl-drafts">
+        {drafts.map((d) => (
+          <li key={d.id} className="bl-same-row">
+            <span className="bl-draft-text">
+              <b>{d.patient.name.trim() || "Unnamed patient"}</b>
+              <small>
+                {d.patient.existingId ?? "New patient"} · step {d.step} of 5 ({STEPS[d.step - 1]}) · {d.services.length} test{d.services.length === 1 ? "" : "s"}
+                {d.services.length ? ` · ${money(computeBill(d).total)}` : ""} · {d.lastSaved ? `saved ${formatRelative(new Date(d.lastSaved))}` : ""}
+              </small>
+            </span>
+            <button type="button" className="bl-btn is-sm" onClick={() => onDismiss(d.id)}>
+              Keep new bill
+            </button>
+            <button type="button" className="bl-btn is-sm is-primary" onClick={() => onResume(d)}>
+              Continue draft <ArrowRight size={14} />
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -774,13 +900,29 @@ function ReferralDialog({ branch, onClose, onFound }: { branch: Branch; onClose:
 
 /* ─────────────── Drafts page ─────────────── */
 
-/** Unfinished bills for the branch — resume or delete (with confirmation). */
+type DraftSort = "recent" | "oldest" | "step" | "value";
+
+/**
+ * Unfinished bills for the branch. Drafts are created automatically while
+ * billing (and by Save as Draft or leaving the page); Continue reopens the
+ * bill at the step where it stopped. Deleting never removes a draft outright —
+ * it goes to Trash for 30 days (owner rule).
+ */
 export function BillingDrafts({ branch }: { branch: Branch }) {
-  const { navigate } = useApp();
+  const { navigate, moveDraftToTrash, showToast } = useApp();
   const store = useBilling();
-  const [confirm, setConfirm] = useState<BillingSession | null>(null);
-  const drafts = store.drafts.filter((d) => d.branchId === branch.id);
+  const [trashing, setTrashing] = useState<BillingSession | null>(null);
+  const [q, setQ] = useState("");
+  const [sort, setSort] = useState<DraftSort>("recent");
+  const all = store.drafts.filter((d) => d.branchId === branch.id);
   const money = (n: number) => formatMoney(n, branch.currency);
+  const when = (d: BillingSession) => d.lastSaved ?? d.startedAt;
+  const term = q.trim().toLowerCase();
+  const drafts = all
+    .filter((d) => !term || `${d.patient.name} ${d.patient.phone} ${d.patient.existingId ?? ""} ${d.reservedId ?? ""} ${d.services.map((s) => s.name).join(" ")} ${d.startedBy?.name ?? ""}`.toLowerCase().includes(term))
+    .sort((a, b) => (sort === "recent" ? when(b).localeCompare(when(a)) : sort === "oldest" ? when(a).localeCompare(when(b)) : sort === "step" ? b.step - a.step : computeBill(b).total - computeBill(a).total));
+  const resume = (d: BillingSession) => navigate(`/branch/${branch.id}/billing?draft=${d.id}`);
+
   return (
     <section className="bl-card">
       <header className="bl-card-head">
@@ -789,42 +931,62 @@ export function BillingDrafts({ branch }: { branch: Branch }) {
         </span>
         <div>
           <h3>Billing drafts</h3>
-          <p>Bills started but not completed. Drafts are saved automatically while billing and kept for this session until the database is connected.</p>
+          <p>Unfinished bills. Drafts save automatically while billing, and when you choose Save as Draft or leave a bill. Continue picks up at the step where it stopped. Saved on this device.</p>
         </div>
       </header>
-      {drafts.length === 0 ? (
-        <div className="bl-selected-empty">No unfinished bills. Drafts appear here when a bill is saved or left before it is completed.</div>
+      {all.length > 0 && (
+        <div className="bl-drafts-tools">
+          <label className="bl-drafts-search">
+            <Search size={16} aria-hidden="true" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search patient, phone, Patient ID, test or staff" aria-label="Search drafts" />
+          </label>
+          <div className="bl-drafts-sort" role="group" aria-label="Sort drafts">
+            {(
+              [
+                ["recent", "Most recent"],
+                ["oldest", "Oldest first"],
+                ["step", "Furthest along"],
+                ["value", "Highest value"],
+              ] as const
+            ).map(([v, label]) => (
+              <button key={v} type="button" className={sort === v ? "is-on" : ""} aria-pressed={sort === v} onClick={() => setSort(v)}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {all.length === 0 ? (
+        <div className="bl-selected-empty">
+          No unfinished bills. A draft appears here as soon as patient details or tests are entered in Billing, and stays until the bill is completed.
+          <div style={{ marginTop: 12 }}>
+            <button type="button" className="bl-btn is-primary" onClick={() => navigate(`/branch/${branch.id}/billing`)}>
+              <FilePlus2 size={15} /> Start a bill
+            </button>
+          </div>
+        </div>
+      ) : drafts.length === 0 ? (
+        <div className="bl-selected-empty">No drafts match “{q}”.</div>
       ) : (
         <ul className="bl-drafts">
           {drafts.map((d) => (
-            <DraftRow key={d.id} d={d} money={money} onResume={() => navigate(`/branch/${branch.id}/billing?draft=${d.id}`)} onDelete={() => setConfirm(d)} />
+            <DraftRow key={d.id} d={d} money={money} onResume={() => resume(d)} onDelete={() => setTrashing(d)} />
           ))}
         </ul>
       )}
-      <Modal
-        open={!!confirm}
-        onClose={() => setConfirm(null)}
-        title="Delete this draft?"
-        description="The unfinished bill is removed and its reserved Patient ID released. This cannot be undone."
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setConfirm(null)}>
-              Keep draft
-            </Button>
-            <Button
-              variant="danger"
-              onClick={() => {
-                if (confirm) deleteDraft(confirm.id, { release: true });
-                setConfirm(null);
-              }}
-            >
-              Delete draft
-            </Button>
-          </>
-        }
-      >
-        <p className="bl-modal-text">{confirm ? `${confirm.patient.name.trim() || "Unnamed patient"} · ${confirm.services.length} test${confirm.services.length === 1 ? "" : "s"}` : ""}</p>
-      </Modal>
+      <MoveToTrashDialog
+        open={!!trashing}
+        name={trashing?.patient.name.trim() || "this draft"}
+        what="unfinished bill"
+        onClose={() => setTrashing(null)}
+        onConfirm={(reason) => {
+          if (trashing) {
+            moveDraftToTrash(trashing.id, reason || "Deleted from Drafts");
+            showToast("Draft moved to Trash — restore it there within 30 days");
+          }
+          setTrashing(null);
+        }}
+      />
     </section>
   );
 }

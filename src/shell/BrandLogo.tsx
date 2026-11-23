@@ -8,8 +8,10 @@ import { COMPANY } from "@/data/company";
 import { initials } from "@/shared/format";
 import { LogoMark } from "./Logo";
 
-export function BrandLogo() {
-  const { logo, name } = useCompanyProfile();
+/** `receipt`: receipts and quotes use the receipt logo when one is set (Settings → Company → Branding). */
+export function BrandLogo({ receipt = false }: { receipt?: boolean }) {
+  const { logo: main, receiptLogo, name } = useCompanyProfile();
+  const logo = receipt && receiptLogo ? receiptLogo : main;
   if (logo) return <img className="brand-logo-img" src={logo} alt={`${name} logo`} />;
   return <LogoMark />;
 }

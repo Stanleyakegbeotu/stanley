@@ -1,41 +1,66 @@
-import { type ReactNode } from "react";
-import { Building2 } from "lucide-react";
+import { useState } from "react";
+import { Plus, Users } from "lucide-react";
 import { useApp } from "@/app/AppState";
 import { getBranch } from "@/data/company";
 import type { Branch } from "@/data/types";
-import { AnimatedPage, Reveal } from "@/shared/motion";
-import { Badge, DemoChip, PageHeader } from "@/shared/ui/controls";
-import { ExpensesTable, InventoryView, PRView, StaffTable } from "@/features/shared/views";
+import { AnimatedPage } from "@/shared/motion";
+import { Badge, Button, PageHeader } from "@/shared/ui/controls";
+import { BRANCH_NAV_ITEMS, canOpenBranchPage } from "@/shell/navigation";
+import { can, usePermissions } from "@/services/permissions";
+import { useBranches } from "@/services/org";
+import { BranchAnalysisPage, BranchDraftsPage, BranchInventoryPage, BranchPrPage, BranchRecordsPage } from "./BranchPages";
+import { StaffBranchView } from "@/features/staff/StaffWorkspace";
+import { AddStaffDialog } from "@/features/shared/createForms";
+import { PageHero } from "@/features/shared/PageHero";
+import { ExpensesPage } from "@/features/expenses/ExpensesPage";
 import { BranchAuditPage, BranchSettingsPage, BranchTrashPage } from "@/features/settings/BranchSettings";
-import { ReportsView } from "@/features/company/pages";
 import { BranchHome } from "./BranchHome";
-import { PatientDirectory } from "@/features/patients/PatientDirectory";
-import { BillingDrafts, BillingWorkspace } from "@/features/billing/BillingWorkspace";
+import { BillingWorkspace } from "@/features/billing/BillingWorkspace";
 
-function ContextNotice({ branch }: { branch: Branch }) {
+/** Branch Staff Management — the same staff list and profiles as the Company Admin's page, for this branch only. */
+function BranchStaffPage({ branch }: { branch: Branch }) {
   const { user } = useApp();
+  const canManage = can(user.role, "staff.manage");
+  const [adding, setAdding] = useState<{ role?: string; session: number } | null>(null);
   return (
-    <Reveal className="notice" style={{ marginBottom: 22 }}>
-      <Building2 size={18} />
-      <span>
-        <strong>You are working inside the {branch.name} branch workspace.</strong> Changes here apply only to this branch. Signed in as {user.role}.
-      </span>
-    </Reveal>
+    <AnimatedPage>
+      <PageHero
+        eyebrow={`Staff management · ${branch.name} branch`}
+        title="Staff Management"
+        period={false}
+        icon={Users}
+        stats="staff"
+        scope={[branch.id]}
+        actions={
+          canManage && (
+            <button type="button" className="ph-btn solid" onClick={() => setAdding((a) => ({ session: (a?.session ?? 0) + 1 }))}>
+              <Plus size={18} /> Add staff
+            </button>
+          )
+        }
+      />
+      <StaffBranchView branchId={branch.id} onAdd={(role) => canManage && setAdding((a) => ({ role, session: (a?.session ?? 0) + 1 }))} />
+      {adding && <AddStaffDialog key={adding.session} open onClose={() => setAdding(null)} branchId={branch.id} presetRole={adding.role} />}
+    </AnimatedPage>
   );
 }
 
-function Simple({ branch, eyebrow, title, description, children, demo = true }: { branch: Branch; eyebrow: string; title: string; description: string; children: ReactNode; demo?: boolean }) {
+/** Shown when a role opens a branch page it doesn't use (e.g. Front Desk → Analysis). */
+function NoAccess({ branch, role, page }: { branch: Branch; role: string; page: string }) {
+  const { navigate } = useApp();
+  const label = BRANCH_NAV_ITEMS.find((i) => i.id === page)?.label ?? "This page";
   return (
     <AnimatedPage>
-      <PageHeader eyebrow={`${eyebrow} · ${branch.name}`} title={title} description={description} actions={demo ? <DemoChip /> : undefined} />
-      <ContextNotice branch={branch} />
-      {children}
+      <PageHeader eyebrow={`${branch.name} branch`} title={`${label} isn't part of your work`} description={`Your account (${role}) covers the branch's day-to-day work. ${label} is for the Branch Manager — ask them if you need something from it.`} />
+      <Button onClick={() => navigate(`/branch/${branch.id}/dashboard`)}>Back to my dashboard</Button>
     </AnimatedPage>
   );
 }
 
 export function BranchWorkspacePage({ branchId, page }: { branchId: string; page: string }) {
-  const { route } = useApp();
+  const { route, user } = useApp();
+  usePermissions();
+  useBranches();
   const branch = getBranch(branchId);
   if (!branch || branch.status !== "Active")
     return (
@@ -44,53 +69,25 @@ export function BranchWorkspacePage({ branchId, page }: { branchId: string; page
         <Badge>No workspace</Badge>
       </AnimatedPage>
     );
-  const scope = [branch.id];
   const f = route.query.get("filter");
+  if (!canOpenBranchPage(user.role, page)) return <NoAccess branch={branch} role={user.role} page={page} />;
   switch (page) {
     case "billing":
       return <BillingWorkspace key={branch.id} branch={branch} />;
     case "drafts":
-      return (
-        <Simple branch={branch} eyebrow="Branch operations" title="Drafts" description="Unfinished bills saved by branch staff.">
-          <BillingDrafts branch={branch} />
-        </Simple>
-      );
+      return <BranchDraftsPage branch={branch} />;
     case "records":
-      return (
-        <Simple branch={branch} eyebrow="Branch operations" title="Records" description="Patient records and diagnostic history for this branch.">
-          <PatientDirectory key={branch.id} branchId={branch.id} initialVisitId={route.query.get("visit")} />
-        </Simple>
-      );
+      return <BranchRecordsPage branch={branch} />;
     case "inventory":
-      return (
-        <Simple branch={branch} eyebrow="Branch operations" title="Inventory" description="The branch's billable service catalogue and prices." demo={false}>
-          <InventoryView scope={scope} initialFilter={f ?? "all"} />
-        </Simple>
-      );
+      return <BranchInventoryPage key={branch.id} branch={branch} initialFilter={f ?? "all"} />;
     case "pr":
-      return (
-        <Simple branch={branch} eyebrow="Branch operations" title="PR Management" description="PR agents (referring doctors), their assigned hospitals and referral activity." demo={false}>
-          <PRView scope={scope} />
-        </Simple>
-      );
+      return <BranchPrPage key={branch.id} branch={branch} />;
     case "analysis":
-      return (
-        <Simple branch={branch} eyebrow="Branch analysis" title="Analysis" description="Branch revenue, referral and service analysis for the reporting period.">
-          <ReportsView ids={scope} basePath={`/branch/${branch.id}/analysis`} />
-        </Simple>
-      );
+      return <BranchAnalysisPage branch={branch} />;
     case "expenses":
-      return (
-        <Simple branch={branch} eyebrow="Branch operations" title="Expenses" description="Record branch expenses and track approval status.">
-          <ExpensesTable scope={scope} canApprove={false} />
-        </Simple>
-      );
+      return <ExpensesPage key={branch.id} branch={branch} />;
     case "staff":
-      return (
-        <Simple branch={branch} eyebrow="Branch operations" title="Staff Management" description="Branch accounts, roles and activity." demo={false}>
-          <StaffTable branchId={branch.id} />
-        </Simple>
-      );
+      return <BranchStaffPage key={branch.id} branch={branch} />;
     case "settings":
       return <BranchSettingsPage branch={branch} />;
     case "audit":

@@ -1,0 +1,131 @@
+/* ───────────────────────── Tables (owner rules, 2026-11-22) ─────────────────────────
+   Loaded after bands.css.
+
+   1. Every table row has the same hover state as the branch dashboard's
+      Daily Test Category Summary: the row lifts, gets a soft theme shadow and
+      a theme accent bar on its left edge — so you always know which row you
+      are reading. Empty-state rows (a single spanning cell) don't react.
+   2. Tables whose cells start at the top (audit log, trash, expenses) get real
+      top/bottom padding, so text never sits on the line above it or looks like
+      it runs into the header. */
+
+:is(.table, .bp-table, .inv-table) {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+:is(.table, .bp-table, .inv-table) tbody tr {
+  position: relative;
+  transition:
+    transform 0.16s var(--ease),
+    box-shadow 0.16s var(--ease),
+    background 0.16s var(--ease);
+}
+
+:is(.table, .bp-table, .inv-table) tbody tr:not(:has(> td[colspan])):hover,
+:is(.table, .bp-table, .inv-table) tbody tr:not(:has(> td[colspan])):focus-visible {
+  z-index: 1;
+  outline: none;
+  transform: translateY(-2px) scale(1.002);
+  background: var(--surface);
+  box-shadow:
+    0 12px 26px color-mix(in srgb, var(--brand-800) 16%, transparent),
+    inset 4px 0 0 var(--brand-600);
+}
+
+:is(.table, .bp-table, .inv-table) tbody tr:not(:has(> td[colspan])):hover > td,
+:is(.table, .bp-table, .inv-table) tbody tr:not(:has(> td[colspan])):focus-visible > td {
+  border-color: transparent;
+}
+
+/* Rank / icon chips inside rows pick up the theme on hover, like the dashboard tables. */
+:is(.table, .bp-table, .inv-table) tbody tr:hover :is(.bd-rank, .rf-rank) {
+  color: #fff;
+  background: var(--brand-700);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :is(.table, .bp-table, .inv-table) tbody tr:hover {
+    transform: none !important;
+  }
+}
+
+/* ─────────────── Top-aligned tables: give cells breathing room ─────────────── */
+.al-table td,
+.ex-table td {
+  height: auto;
+  padding-top: 14px;
+  padding-bottom: 14px;
+  vertical-align: top;
+}
+
+/* ─────────────── Audit log / Trash layout ─────────────── */
+.al-table {
+  min-width: 1060px;
+}
+.al-when b {
+  display: block;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.al-when small {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.al-person {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 170px;
+}
+.al-avatar {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--brand-800);
+  background: var(--brand-50);
+  border: 1px solid var(--brand-100);
+}
+.al-person-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.al-person-text b {
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.al-person-text small {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.al-table .al-action {
+  min-width: 150px;
+  white-space: normal;
+  line-height: 1.35;
+}
+.al-table .al-record {
+  min-width: 150px;
+  line-height: 1.4;
+  overflow-wrap: break-word;
+}
+.al-table .al-details {
+  min-width: 220px;
+}
+.al-table tbody tr:hover .al-avatar {
+  color: #fff;
+  background: var(--brand-600);
+  border-color: var(--brand-600);
+}

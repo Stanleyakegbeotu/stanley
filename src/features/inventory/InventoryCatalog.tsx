@@ -35,11 +35,13 @@ import {
   Stethoscope,
   Tag,
   Timer,
+  Trash2,
   TrendingUp,
   Waves,
   type LucideIcon,
 } from "lucide-react";
 import { useApp } from "@/app/AppState";
+import { MoveToTrashDialog } from "@/features/admin/AdminLogs";
 import type { Currency } from "@/data/types";
 import { INVENTORY_NOTES, LEGACY_BRANCH_ID } from "@/data/legacy";
 import { CATALOGUE_INVENTORY, ITEM_REASSIGN } from "@/data/catalogueRules";
@@ -180,6 +182,7 @@ export function InventoryCatalog({
   compact = false,
   onAddService,
   onDetailChange,
+  readOnly = false,
 }: {
   scope: string[] | null;
   /** Tests performed / revenue per service id in the reporting period. */
@@ -193,6 +196,8 @@ export function InventoryCatalog({
   onAddService?: (categoryKey?: string) => void;
   /** Told when a category / smart list opens or closes (pages hide their hero while it is open). */
   onDetailChange?: (detail: boolean) => void;
+  /** View-only price list (branch staff): no add, edit or rename. */
+  readOnly?: boolean;
 }) {
   const { inventory } = useApp();
   const m = useMotionPreset();
@@ -283,7 +288,7 @@ export function InventoryCatalog({
                 {g && g.label !== g.key && <> · renamed from {g.key}</>}
               </p>
             </div>
-            {g && (
+            {g && !readOnly && (
               <div className="inv-banner-actions">
                 <button type="button" className="inv-glass-btn" onClick={() => setRenaming(g)}>
                   <Pencil size={16} /> Rename
@@ -328,7 +333,7 @@ export function InventoryCatalog({
           </div>
         )}
 
-        <ServiceTable key={g ? g.key : view.kind === "smart" ? view.filter : "x"} items={list} activity={activity} currency={currency} periodText={periodText} initialQuery={q} showCategory={!g} groups={groups} onEdit={setEditing} />
+        <ServiceTable key={g ? g.key : view.kind === "smart" ? view.filter : "x"} items={list} activity={activity} currency={currency} periodText={periodText} initialQuery={q} showCategory={!g} groups={groups} onEdit={readOnly ? undefined : setEditing} />
         {dialogs}
       </div>
     );
@@ -403,7 +408,7 @@ export function InventoryCatalog({
           onChange={(v: CardSort) => setSort(v)}
         />
         {/* Pages with a hero banner own the primary "Add service" button. */}
-        {!onAddService && (
+        {!onAddService && !readOnly && (
           <Button onClick={() => openAdd()}>
             <Plus size={16} /> Add service
           </Button>
@@ -607,7 +612,8 @@ function ServiceTable({
   initialQuery: string;
   showCategory: boolean;
   groups: CategoryGroup[];
-  onEdit: (i: CatalogueItem) => void;
+  /** Omitted for view-only lists. */
+  onEdit?: (i: CatalogueItem) => void;
 }) {
   const [q, setQ] = useState(initialQuery);
   const [filter, setFilter] = useState<ItemFilter>("all");
@@ -713,13 +719,13 @@ function ServiceTable({
                 <th className="right">Price</th>
                 {activity && <th>Performed · {periodText}</th>}
                 {activity && <th className="right">Revenue</th>}
-                <th className="right" aria-label="Actions" />
+                {onEdit && <th className="right" aria-label="Actions" />}
               </tr>
             </thead>
             <tbody>
               {visible.length === 0 ? (
                 <tr>
-                  <td colSpan={3 + (showCategory ? 1 : 0) + (activity ? 2 : 0)}>
+                  <td colSpan={(onEdit ? 3 : 2) + (showCategory ? 1 : 0) + (activity ? 2 : 0)}>
                     <EmptyState title={term ? `No services match “${q}”` : "No services in this view"} />
                   </td>
                 </tr>
@@ -772,12 +778,14 @@ function ServiceTable({
                         </td>
                       )}
                       {activity && <td className="right num ep-nowrap">{act?.count ? formatMoney(act.revenue, currency) : <span className="lg-muted">—</span>}</td>}
-                      <td className="right">
-                        <button type="button" className="inv-edit" onClick={() => onEdit(i)} aria-label={`Edit ${i.name}`} title="Edit name and price">
-                          <Pencil size={15} />
-                          <span>Edit</span>
-                        </button>
-                      </td>
+                      {onEdit && (
+                        <td className="right">
+                          <button type="button" className="inv-edit" onClick={() => onEdit(i)} aria-label={`Edit ${i.name}`} title="Edit name and price">
+                            <Pencil size={15} />
+                            <span>Edit</span>
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   );
                 })
@@ -798,7 +806,9 @@ function EditServiceDialog({ item, onClose }: { item: CatalogueItem | null; onCl
 }
 
 function EditServiceForm({ item, onClose }: { item: CatalogueItem; onClose: () => void }) {
-  const { editService, revertService, showToast } = useApp();
+  const { editService, revertService, showToast, moveServiceToTrash } = useApp();
+  // Only services added in STANLEY can be deleted (to Trash); the legacy catalogue never.
+  const [trashing, setTrashing] = useState(false);
   const [name, setName] = useState(item.name);
   const [price, setPrice] = useState(item.price === null ? "" : String(item.price));
   const value = price.trim() === "" ? null : Number(price.replace(/,/g, ""));
@@ -831,6 +841,11 @@ function EditServiceForm({ item, onClose }: { item: CatalogueItem; onClose: () =
               }}
             >
               <RotateCcw size={15} /> Restore recorded values
+            </Button>
+          )}
+          {item.source === "user" && (
+            <Button variant="secondary" className="st-trash" onClick={() => setTrashing(true)}>
+              <Trash2 size={15} /> Move to trash
             </Button>
           )}
           <span className="left" />
@@ -885,6 +900,18 @@ function EditServiceForm({ item, onClose }: { item: CatalogueItem; onClose: () =
           <span>{item.note}</span>
         </div>
       )}
+      <MoveToTrashDialog
+        open={trashing}
+        name={item.name}
+        what="service"
+        onClose={() => setTrashing(false)}
+        onConfirm={(reason) => {
+          moveServiceToTrash(item.id, reason);
+          setTrashing(false);
+          showToast(`${item.name} moved to Trash — restore it there within 30 days`);
+          onClose();
+        }}
+      />
     </Modal>
   );
 }

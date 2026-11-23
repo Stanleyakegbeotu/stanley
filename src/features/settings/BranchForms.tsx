@@ -20,7 +20,7 @@ import { updateBranchProfile, useBranchProfile } from "@/services/settingsStore"
 import { Badge, Button, EmptyState, SelectMenu } from "@/shared/ui/controls";
 import { FieldError, fieldErrorProps, focusFirstError } from "@/shared/ui/FieldError";
 import { UserAvatar } from "@/shell/BrandLogo";
-import { useSettings } from "@/services/settingsStore";
+import { resolvePhoto, useSettings } from "@/services/settingsStore";
 import { AddStaffDialog } from "@/features/shared/createForms";
 import { EMAIL_RE, PHONE_RE, dataErr } from "./ProfileCard";
 
@@ -182,7 +182,7 @@ export function BranchStaffControl({ branch }: { branch: Branch }) {
                     <tr key={s.id}>
                       <td>
                         <div className="st-person">
-                          <UserAvatar name={s.name} photo={profiles[s.id]?.photo} />
+                          <UserAvatar name={s.name} photo={resolvePhoto(profiles, s.id, s.photo)} />
                           <span>
                             <strong>
                               {s.name} {self && <Badge tone="brand">You</Badge>}

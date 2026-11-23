@@ -13,7 +13,10 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { CalendarDays, Clock3, CreditCard, Handshake, MapPin, Phone, Printer, UserCheck, UserRound, X } from "lucide-react";
+import { CalendarDays, Clock3, CreditCard, Handshake, MapPin, Phone, Printer, Trash2, UserCheck, UserRound, X } from "lucide-react";
+import { useBilling } from "@/services/billing";
+import { can } from "@/services/permissions";
+import { MoveToTrashDialog } from "@/features/admin/AdminLogs";
 import { useApp } from "@/app/AppState";
 import { SERVICES, getBranch } from "@/data/company";
 import { patientHistory, type PatientVisit } from "@/data/demo/dailyLines";
@@ -38,6 +41,12 @@ function PatientRecord({ visit, onClose }: { visit: PatientVisit; onClose: () =>
   const [selectedId, setSelectedId] = useState(visit.id);
   const [receiptFor, setReceiptFor] = useState<PatientVisit | null>(null);
   const current = visits.find((v) => v.id === selectedId) ?? visit;
+  // Bills saved in STANLEY can be moved to Trash by the Branch Manager / Company Admin (demo visits never).
+  const { user, moveBillToTrash, showToast } = useApp();
+  const billing = useBilling();
+  const savedBill = billing.orders.find((o) => o.invoiceNo === current.id) ?? null;
+  const canTrashBill = can(user.role, "billing.trashBill");
+  const [trashing, setTrashing] = useState(false);
   const branch = getBranch(visit.branchId);
   const c = branch?.currency ?? "NGN";
 
@@ -154,7 +163,12 @@ function PatientRecord({ visit, onClose }: { visit: PatientVisit; onClose: () =>
             </div>
 
             <footer className="fd-foot">
-              <span className="left">Demonstration visit built from the real catalogue and prices. Patients are anonymous references.</span>
+              {savedBill && canTrashBill ? (
+                <Button variant="secondary" className="st-trash" onClick={() => setTrashing(true)}>
+                  <Trash2 size={15} /> Move bill to trash
+                </Button>
+              ) : null}
+              <span className="left">{savedBill ? `Bill ${savedBill.invoiceNo} saved in STANLEY by ${savedBill.createdBy.name}.` : "Demonstration visit built from the real catalogue and prices. Patients are anonymous references."}</span>
               <Button variant="secondary" onClick={onClose}>
                 Done
               </Button>
@@ -166,6 +180,20 @@ function PatientRecord({ visit, onClose }: { visit: PatientVisit; onClose: () =>
         </motion.div>
       </motion.div>
       {receiptFor && <ReceiptModal key={receiptFor.id} visit={receiptFor} onClose={() => setReceiptFor(null)} />}
+      {savedBill && (
+        <MoveToTrashDialog
+          open={trashing}
+          name={savedBill.invoiceNo}
+          what="bill"
+          onClose={() => setTrashing(false)}
+          onConfirm={(reason) => {
+            moveBillToTrash(savedBill.invoiceNo, reason);
+            setTrashing(false);
+            showToast(`${savedBill.invoiceNo} moved to Trash — restore it there within 30 days`);
+            onClose();
+          }}
+        />
+      )}
     </AnimatePresence>,
     document.body,
   );

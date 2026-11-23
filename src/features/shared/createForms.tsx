@@ -32,7 +32,7 @@ const branchOptions = () => ACTIVE_BRANCHES.map((b) => ({ value: b.id, label: b.
  * Dialog footer. Save is never greyed out: if something required is missing,
  * pressing it marks the fields (onInvalid) and scrolls to the first one.
  */
-function Footer({ onCancel, submitLabel, canSubmit, onSubmit, onInvalid, cancelLabel = "Cancel" }: { onCancel: () => void; submitLabel: string; canSubmit: boolean; onSubmit: () => void; onInvalid: () => void; cancelLabel?: string }) {
+export function Footer({ onCancel, submitLabel, canSubmit, onSubmit, onInvalid, cancelLabel = "Cancel" }: { onCancel: () => void; submitLabel: string; canSubmit: boolean; onSubmit: () => void; onInvalid: () => void; cancelLabel?: string }) {
   return (
     <>
       <span className="left">
@@ -57,7 +57,7 @@ function Footer({ onCancel, submitLabel, canSubmit, onSubmit, onInvalid, cancelL
 }
 
 /** Field errors appear only after a blocked Save, then update live as fields are fixed. Cleared each time the dialog opens. */
-function useFieldErrors(open: boolean) {
+export function useFieldErrors(open: boolean) {
   const [tried, setTried] = useState(false);
   useEffect(() => {
     if (open) setTried(false);
@@ -66,7 +66,7 @@ function useFieldErrors(open: boolean) {
 }
 
 /** Select trigger used inside FormDialog fields. */
-function Trigger({ code, text, placeholder }: { code?: string; text?: string; placeholder?: string }) {
+export function Trigger({ code, text, placeholder }: { code?: string; text?: string; placeholder?: string }) {
   return (
     <>
       <span className="fd-select-value">
