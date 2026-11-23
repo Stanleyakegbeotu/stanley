@@ -299,7 +299,7 @@ export function DataSection() {
             ))}
           </Table>
         )}
-        <NotConnected>Automatic and cloud backups need the cloud database. For now, back up to a file regularly — the Overview reminds you when one is due.</NotConnected>
+        <NotConnected>Automatic daily backups (last 7 days, kept inside STANLEY) and the backup folder are in System health. A cloud copy needs the cloud database, which isn't connected yet.</NotConnected>
       </Panel>
 
       <ConfirmDialog

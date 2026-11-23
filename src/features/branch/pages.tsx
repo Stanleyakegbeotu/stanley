@@ -15,6 +15,7 @@ import { PageHero } from "@/features/shared/PageHero";
 import { ExpensesPage } from "@/features/expenses/ExpensesPage";
 import { BranchAuditPage, BranchSettingsPage, BranchTrashPage } from "@/features/settings/BranchSettings";
 import { BranchHome } from "./BranchHome";
+import { AssistantPage } from "@/features/assistant/AssistantPage";
 import { BillingWorkspace } from "@/features/billing/BillingWorkspace";
 
 /** Branch Staff Management — the same staff list and profiles as the Company Admin's page, for this branch only. */
@@ -94,6 +95,10 @@ export function BranchWorkspacePage({ branchId, page }: { branchId: string; page
       return <BranchAuditPage branch={branch} />;
     case "trash":
       return <BranchTrashPage branch={branch} />;
+    case "assistant":
+      return <AssistantPage mode="intelligence" base={`/branch/${branch.id}`} />;
+    case "support":
+      return <AssistantPage mode="issues" base={`/branch/${branch.id}`} />;
     default:
       return <BranchHome branch={branch} />;
   }

@@ -9,6 +9,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
   Bell,
+  BookOpenText,
   Building2,
   ClipboardCheck,
   CreditCard,
@@ -18,12 +19,14 @@ import {
   Info,
   KeyRound,
   LayoutDashboard,
+  MessageSquareWarning,
   Package,
   Palette,
   Plug,
   ScrollText,
   Search,
   ShieldCheck,
+  Stethoscope,
   Store,
   UserRound,
   UserSquare2,
@@ -44,6 +47,11 @@ import { RolesSection } from "./admin/Roles";
 import { ApprovalsSection, BillingSection, PatientsSection, ReferralSection, ServicesSection } from "./admin/Business";
 import { AppearanceSection, AuditSection, DataSection, IntegrationsSection, NotificationsSection, SecuritySection, SystemSection } from "./admin/System";
 import { useOrgFacts } from "./admin/orgData";
+import { SystemHealthSection } from "@/features/recovery/SystemHealth";
+import { ReportIssueSection } from "@/features/recovery/ReportIssue";
+import { AboutAccountSection } from "@/features/recovery/AboutAccount";
+import { useHealth } from "@/services/recovery/health";
+import { useIssues } from "@/services/recovery/helpdesk";
 
 export { ReceiptPreview } from "./admin/Company";
 
@@ -66,6 +74,7 @@ const GROUPS: Group[] = [
     sections: [
       { id: "overview", label: "Overview", icon: LayoutDashboard, hint: "The organisation at a glance, what needs attention and quick actions.", keywords: "dashboard alerts status configuration quick actions" },
       { id: "profile", label: "My profile", icon: UserRound, hint: "Your own account — photo and contact details.", keywords: "photo avatar name email phone account" },
+      { id: "about", label: "About my account", icon: BookOpenText, hint: "Your role in plain words — your job, tasks, what you can and can't do, the rules and who to ask.", keywords: "about role duties tasks rules permissions what can i do" },
     ],
   },
   {
@@ -95,6 +104,8 @@ const GROUPS: Group[] = [
       { id: "notifications", label: "Notifications", icon: Bell, hint: "Which notifications appear in the app.", keywords: "notifications alerts email sms bell" },
       { id: "security", label: "Security & access", icon: ShieldCheck, hint: "Access control, sensitive actions and security history.", keywords: "security password login session lockout sensitive access" },
       { id: "appearance", label: "Appearance & themes", icon: Palette, hint: "The colour theme for the whole app.", keywords: "theme colour color appearance light" },
+      { id: "health", label: "System health", icon: Stethoscope, hint: "Scan for errors, automatic backups, recent problems and the support contact.", keywords: "scan errors health problem slow crash fix backup automatic recovery restore developer support" },
+      { id: "issues", label: "Report an issue", icon: MessageSquareWarning, hint: "Describe a problem or what you're looking for in your own words — STANLEY points you to it or scans for the cause.", keywords: "report issue problem help bug not loading cant find support complaint" },
       { id: "data", label: "Data & backup", icon: Database, hint: "What's stored on this device, backups and restore.", keywords: "backup restore data storage export file" },
       { id: "integrations", label: "Integrations", icon: Plug, hint: "Connected services — honest status only.", keywords: "integration cloud sync email sms payment gateway api" },
       { id: "audit", label: "Audit log", icon: ScrollText, hint: "Every change, who made it and when.", keywords: "audit log history activity export" },
@@ -107,6 +118,8 @@ const ALL = GROUPS.flatMap((g) => g.sections);
 export function SettingsPage() {
   const { route, navigate, user } = useApp();
   const facts = useOrgFacts();
+  const { incidents } = useHealth();
+  const issues = useIssues();
   const raw = route.query.get("section") ?? "overview";
   const current = ALL.find((s) => s.id === (raw === "permissions" ? "roles" : raw === "branding" || raw === "documents" ? "company" : raw)) ?? ALL[0];
   const action = route.query.get("action");
@@ -116,6 +129,8 @@ export function SettingsPage() {
     approvals: facts.pendingApprovals,
     managers: facts.perBranch.filter((b) => !b.manager && b.branch.status !== "Inactive").length,
     data: facts.backupOverdue ? 1 : 0,
+    health: incidents.filter((i) => !i.fixed && Date.now() - new Date(i.at).getTime() < 7 * 86_400_000).length,
+    issues: issues.filter((i) => i.status !== "solved").length,
   };
 
   return (
@@ -163,6 +178,9 @@ export function SettingsPage() {
           {current.id === "notifications" && <NotificationsSection />}
           {current.id === "security" && <SecuritySection />}
           {current.id === "appearance" && <AppearanceSection />}
+          {current.id === "about" && <AboutAccountSection />}
+          {current.id === "health" && <SystemHealthSection />}
+          {current.id === "issues" && <ReportIssueSection />}
           {current.id === "data" && <DataSection />}
           {current.id === "integrations" && <IntegrationsSection />}
           {current.id === "audit" && <AuditSection />}

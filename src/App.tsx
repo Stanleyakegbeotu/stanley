@@ -16,7 +16,16 @@ import { CompanyDashboard } from "@/features/company/CompanyDashboard";
 import { AuditPage, BranchesPage, FinancePage, InventoryPage, PatientsPage, PRPage, ReportsPage, StaffPage, TrashPage } from "@/features/company/pages";
 import { SettingsPage } from "@/features/settings/AdminSettings";
 import { BranchWorkspacePage } from "@/features/branch/pages";
-import { AssistantDock } from "@/features/intelligence/Intelligence";
+import { AssistantDock } from "@/features/assistant/AssistantDock";
+import { AssistantPage } from "@/features/assistant/AssistantPage";
+import { PageProbeHost } from "@/features/assistant/PageProbeHost";
+import { setPageRenderer } from "@/services/assistant/probe";
+import { setReturnPath } from "@/services/assistant/store";
+import { RecoveryBoundary } from "@/features/recovery/RecoveryBoundary";
+import { HealthBanner, WelcomeBack } from "@/features/recovery/WelcomeBack";
+import { scheduleDailyBackups } from "@/services/recovery/backups";
+import { setSessionUser } from "@/services/recovery/health";
+import { companyName } from "@/services/settingsStore";
 
 function RouteView({ route }: { route: Route }) {
   const br = branchRoute(route);
@@ -42,10 +51,21 @@ function RouteView({ route }: { route: Route }) {
       return <AuditPage />;
     case "trash":
       return <TrashPage />;
+    case "assistant":
+      return <AssistantPage mode="intelligence" base="" />;
+    case "support":
+      return <AssistantPage mode="issues" base="" />;
     default:
       return <CompanyDashboard />;
   }
 }
+
+/** The real page check draws any page from its path (services/assistant/probe.ts). */
+function routeFromPath(path: string): Route {
+  const [p, q = ""] = path.split("?");
+  return { path: p, segments: p.split("/").filter(Boolean), query: new URLSearchParams(q) };
+}
+setPageRenderer((path) => <RouteView route={routeFromPath(path)} />);
 
 function pageTitle(route: Route): string {
   const br = branchRoute(route);
@@ -58,22 +78,41 @@ function pageTitle(route: Route): string {
 }
 
 function Shell() {
-  const { collapsed, route, toast, signOutOpen, setSignOutOpen, showToast } = useApp();
+  const { collapsed, route, toast, signOutOpen, setSignOutOpen, showToast, user, navigate } = useApp();
   const scroller = useRef<HTMLElement>(null);
+  const br = branchRoute(route);
+  const home = br ? `/branch/${br.branchId}/dashboard` : "/dashboard";
+  const healthPath = br ? `/branch/${br.branchId}/settings?section=health` : "/settings?section=health";
+  const area = pageTitle(route).split(" · ")[0];
+
+  // Recovery: who is working (for the power-cut notice) and the automatic daily backup.
+  useEffect(() => setSessionUser(`${user.name} (${user.role})`), [user.name, user.role]);
+  const userRef = useRef(user.name);
+  userRef.current = user.name;
+  useEffect(() => scheduleDailyBackups(() => ({ company: companyName(), by: `Automatic daily backup (${userRef.current} signed in)` })), []);
 
   useEffect(() => {
     document.title = pageTitle(route);
+    // Minimise / close in STANLEY AI return to the last page outside it.
+    if (!/\/(assistant|support)$/.test(route.path)) setReturnPath(route.path + (route.query.toString() ? `?${route.query}` : ""));
   }, [route]);
 
   return (
     <div className="app-shell" data-collapsed={collapsed}>
-      <Sidebar />
+      <RecoveryBoundary area="The sidebar" variant="widget">
+        <Sidebar />
+      </RecoveryBoundary>
       <motion.div className="workspace" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: EASE, delay: 0.05 }}>
-        <Header />
+        <RecoveryBoundary area="The header" variant="widget">
+          <Header />
+        </RecoveryBoundary>
+        <HealthBanner />
         <main ref={scroller} className="scroll-area thin-scroll" id="main">
           <div className="page-wrap">
             <AnimatePresence mode="wait" onExitComplete={() => scroller.current?.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior })}>
-              <RouteView key={route.path} route={route} />
+              <RecoveryBoundary key={route.path} area={area} variant="page" resetKey={route.path} onHome={() => navigate(home)} onScan={() => navigate(healthPath)}>
+                <RouteView route={route} />
+              </RecoveryBoundary>
             </AnimatePresence>
           </div>
         </main>
@@ -81,7 +120,11 @@ function Shell() {
         <div id="workspace-footer" className="workspace-footer" />
       </motion.div>
 
-      <AssistantDock />
+      <RecoveryBoundary area="The assistant" variant="widget">
+        <AssistantDock />
+      </RecoveryBoundary>
+      <WelcomeBack />
+      <PageProbeHost />
 
       <AnimatePresence>
         {toast && (

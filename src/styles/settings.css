@@ -412,3 +412,253 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* ─────────────── Branch Settings: My role & permissions / Security & access (read-only) ─────────────── */
+.ma-role {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px 20px;
+  padding: 18px 20px;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--brand-100);
+  border-top: 3px solid var(--brand-600);
+  background: linear-gradient(160deg, var(--brand-50), var(--surface) 70%);
+}
+.ma-role-icon {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: linear-gradient(135deg, var(--brand-600), var(--brand-800));
+}
+.ma-role > div {
+  flex: 1;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+}
+.ma-role > div > span {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ma-role > div > b {
+  font-size: 20px;
+  color: var(--ink);
+}
+.ma-role > div > small {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.ma-role dl {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+.ma-role dt {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ma-role dd {
+  margin: 3px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.ma-two {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.ma-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ma-chips li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand-800);
+  background: var(--brand-50);
+  border: 1px solid var(--brand-100);
+}
+.ma-chips li svg,
+.ma-list svg,
+.ma-readonly svg,
+.ma-note svg {
+  flex: none;
+  display: inline-block;
+}
+.ma-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ma-list li {
+  display: flex;
+  flex-direction: column;
+}
+.ma-list li b {
+  font-size: 14px;
+  color: var(--ink);
+}
+.ma-list li small {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.ma-list.is-protect li {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.ma-list.is-protect li:last-child {
+  border-bottom: 0;
+}
+.ma-list.is-protect li svg {
+  margin-top: 2px;
+  color: var(--brand-600);
+}
+.ma-list.is-protect li span {
+  display: flex;
+  flex-direction: column;
+}
+.ma-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.ma-group {
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--canvas);
+}
+.ma-group h5 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--brand-700);
+}
+.ma-group ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ma-group li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.ma-mark {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  margin-top: 1px;
+}
+.ma-group li.is-on .ma-mark {
+  color: #fff;
+  background: var(--brand-600);
+}
+.ma-group li.is-off .ma-mark,
+.ma-group li.is-admin .ma-mark {
+  color: var(--muted);
+  background: var(--canvas);
+}
+.ma-group li.is-off,
+.ma-group li.is-admin {
+  opacity: 0.72;
+}
+.ma-perm {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.ma-perm b {
+  font-size: 13.5px;
+  color: var(--ink);
+}
+.ma-perm small {
+  font-size: 12px;
+  color: var(--muted);
+}
+.ma-sensitive {
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-style: normal;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--warn);
+  background: var(--warn-bg);
+}
+.ma-state {
+  flex: none;
+  font-size: 11.5px;
+  font-weight: 650;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.ma-group li.is-on .ma-state {
+  color: var(--brand-700);
+}
+.ma-readonly,
+.ma-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 11px 14px;
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink-2);
+  background: var(--canvas);
+  border: 1px dashed var(--line-2);
+}
+.ma-readonly svg,
+.ma-note svg {
+  margin-top: 2px;
+  color: var(--brand-600);
+}
+@media (max-width: 1100px) {
+  .ma-two,
+  .ma-groups {
+    grid-template-columns: 1fr;
+  }
+}
