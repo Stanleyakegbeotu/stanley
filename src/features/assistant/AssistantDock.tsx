@@ -7,9 +7,10 @@
  *    button opens it there (and minimising the full page comes back here).
  *  • Hidden on the STANLEY AI pages themselves.
  */
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeftRight, ChevronRight, Maximize2, MessageSquareWarning, Sparkles, X } from "lucide-react";
+import { ArrowLeftRight, ChevronRight, Maximize2, X } from "lucide-react";
+import { StanleyOrb } from "./StanleyOrb";
 import { useApp } from "@/app/AppState";
 import { branchRoute } from "@/app/router";
 import { useMotionPreset } from "@/shared/motion";
@@ -28,6 +29,9 @@ export function AssistantDock() {
   const { open, mode } = store.dock;
   const conv = mode ? activeConversation(mode, store) : null;
   const busy = !!conv?.messages.some((x) => x.pending);
+  // The orb: wakes up on hover, "thinks" while any answer is being worked on.
+  const [hover, setHover] = useState(false);
+  const working = store.conversations.some((c) => c.messages.some((x) => x.pending));
 
   // Questions asked from elsewhere (e.g. the dashboard briefing) open Intelligence and are answered.
   useEffect(() => {
@@ -55,8 +59,8 @@ export function AssistantDock() {
           {!mode ? (
             <>
               <div className="intel-head">
-                <span className="intel-mark">
-                  <Sparkles size={18} />
+                <span className="intel-mark is-orb">
+                  <StanleyOrb size={40} mood="awake" />
                 </span>
                 <div>
                   <strong>STANLEY AI</strong>
@@ -74,7 +78,9 @@ export function AssistantDock() {
           ) : (
             <>
               <div className="intel-head">
-                <span className="intel-mark">{mode === "issues" ? <MessageSquareWarning size={18} /> : <Sparkles size={18} />}</span>
+                <span className="intel-mark is-orb">
+                  <StanleyOrb size={40} mood={busy ? "thinking" : "awake"} />
+                </span>
                 <div>
                   <strong>{MODES[mode].label}</strong>
                   <small>{mode === "issues" ? "Support desk · real checks" : ctx.scopeLabel}</small>
@@ -97,12 +103,19 @@ export function AssistantDock() {
           )}
         </motion.section>
       ) : (
-        <motion.button key="launcher" className="intel-launcher" onClick={() => openDock(null)} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} whileTap={m.press} aria-label="Open STANLEY AI" title="STANLEY AI">
+        <motion.button
+          key="launcher"
+          className={`intel-launcher has-orb ${working ? "is-working" : ""}`}
+          onClick={() => openDock(null)}
+          onMouseEnter={() => setHover(true)}
+          onMouseLeave={() => setHover(false)}
+          onFocus={() => setHover(true)}
+          onBlur={() => setHover(false)} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} whileTap={m.press} aria-label="Open STANLEY AI" title="STANLEY AI">
           <span className="intel-launcher-label" aria-hidden="true">
             STANLEY AI
           </span>
-          <span className="intel-mark">
-            <Sparkles size={20} />
+          <span className="intel-mark is-orb">
+            <StanleyOrb size={46} mood={working ? "thinking" : hover ? "awake" : "idle"} />
           </span>
         </motion.button>
       )}

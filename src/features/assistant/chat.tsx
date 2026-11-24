@@ -3,7 +3,7 @@
  * full workspace page, so both show the same conversation the same way.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ArrowRight, BarChart3, BookOpen, Bot, CheckCircle2, Compass, FileText, Gauge, LifeBuoy, MessageSquareWarning, Plus, Send, Sparkles, Stethoscope, ThumbsDown, ThumbsUp, UserRound, Wallet, AlertCircle, ArrowLeftRight, type LucideIcon } from "lucide-react";
+import { ArrowRight, BarChart3, BookOpen, CheckCircle2, Compass, FileText, Gauge, LifeBuoy, MessageSquareWarning, Plus, Send, Sparkles, Stethoscope, ThumbsDown, ThumbsUp, UserRound, Wallet, AlertCircle, ArrowLeftRight, type LucideIcon } from "lucide-react";
 import { useApp } from "@/app/AppState";
 import { branchRoute } from "@/app/router";
 import { getBranch } from "@/data/company";
@@ -16,6 +16,7 @@ import { reportText, type CheckResult, type ScanReport } from "@/services/recove
 import { Button } from "@/shared/ui/controls";
 import { DeveloperDialog, ScanResults, useResultActions, verdictText } from "@/features/recovery/SystemHealth";
 import pkg from "../../../package.json";
+import { StanleyOrb } from "./StanleyOrb";
 
 /* ─────────────── Modes ─────────────── */
 
@@ -96,10 +97,11 @@ export function Welcome({ mode, compact, onSend }: { mode: Mode; compact?: boole
   const { user } = useApp();
   const info = MODES[mode];
   const cards = suggestionsFor(mode, user.kind);
+  const [awake, setAwake] = useState(false);
   return (
     <div className={`ai-welcome ${compact ? "is-compact" : ""}`}>
-      <span className="ai-welcome-mark" aria-hidden="true">
-        <info.icon size={compact ? 22 : 30} />
+      <span className="ai-welcome-mark is-orb" aria-hidden="true" onMouseEnter={() => setAwake(true)} onMouseLeave={() => setAwake(false)}>
+        <StanleyOrb size={compact ? 64 : 112} mood={awake ? "awake" : "idle"} />
       </span>
       <h2>
         Good to see you, {user.firstName || user.name.split(" ")[0]} <span aria-hidden="true">👋</span>
@@ -128,6 +130,7 @@ export function Welcome({ mode, compact, onSend }: { mode: Mode; compact?: boole
 export function Thread({ conv, compact }: { conv: Conversation; compact?: boolean }) {
   const end = useRef<HTMLDivElement>(null);
   const last = conv.messages[conv.messages.length - 1];
+  const lastReply = [...conv.messages].reverse().find((x) => x.role === "assistant")?.id;
   useEffect(() => {
     end.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [conv.messages.length, last?.pending, last?.blocks.length]);
@@ -135,9 +138,15 @@ export function Thread({ conv, compact }: { conv: Conversation; compact?: boolea
     <ol className={`ai-thread ${compact ? "is-compact" : ""}`} aria-live="polite">
       {conv.messages.map((m, i) => (
         <li key={m.id} className={`ai-msg is-${m.role}`}>
-          <span className="ai-avatar" aria-hidden="true">
-            {m.role === "user" ? <UserRound size={14} /> : <Bot size={14} />}
-          </span>
+          {m.role === "user" ? (
+            <span className="ai-avatar" aria-hidden="true">
+              <UserRound size={14} />
+            </span>
+          ) : (
+            <span className="ai-avatar is-orb" aria-hidden="true">
+              <StanleyOrb size={compact ? 24 : 32} mood={m.pending ? "thinking" : "idle"} still={m.id !== lastReply && !m.pending} />
+            </span>
+          )}
           <div className="ai-bubble">
             {m.blocks.map((b, j) => (
               <BlockView key={j} block={b} />

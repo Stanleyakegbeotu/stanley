@@ -1033,3 +1033,75 @@
     grid-template-columns: minmax(0, 1fr) 64px;
   }
 }
+
+/* ─────────────── The STANLEY Orb in place of the static marks (owner, 2026-11-23) ─────────────── */
+.stanley-orb {
+  display: block;
+}
+.intel-mark.is-orb,
+.ai-mark.is-orb,
+.ai-welcome-mark.is-orb {
+  background: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  border-radius: 50%;
+  overflow: visible;
+}
+.intel-launcher.has-orb {
+  padding: 5px;
+  height: 58px;
+  min-width: 58px;
+}
+.intel-launcher.has-orb .intel-mark.is-orb {
+  width: 46px;
+  height: 46px;
+  transition: transform 0.45s var(--ease);
+}
+/* On hover the orb comes forward a little instead of tilting like the old icon. */
+.intel-launcher.has-orb:hover .intel-mark.is-orb,
+.intel-launcher.has-orb:focus-visible .intel-mark.is-orb {
+  transform: scale(1.07);
+}
+/* While STANLEY is working on an answer, a soft halo pulses around the button. */
+.intel-launcher.has-orb.is-working {
+  animation: orb-halo 1.6s ease-in-out infinite;
+}
+@keyframes orb-halo {
+  0%,
+  100% {
+    box-shadow: 0 12px 28px color-mix(in srgb, var(--brand-800) 40%, transparent), 0 0 0 0 color-mix(in srgb, var(--brand-400) 45%, transparent);
+  }
+  50% {
+    box-shadow: 0 12px 28px color-mix(in srgb, var(--brand-800) 40%, transparent), 0 0 0 9px color-mix(in srgb, var(--brand-400) 0%, transparent);
+  }
+}
+.ai-mark.is-orb {
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+}
+.ai-welcome-mark.is-orb {
+  width: auto;
+  height: auto;
+  margin: 0 0 14px;
+  filter: drop-shadow(0 18px 34px color-mix(in srgb, var(--brand-700) 28%, transparent));
+}
+@media (prefers-reduced-motion: reduce) {
+  .intel-launcher.has-orb.is-working {
+    animation: none;
+  }
+}
+
+/* Orb on STANLEY's chat replies (owner, 2026-11-23). */
+.ai-avatar.is-orb {
+  width: 32px;
+  height: 32px;
+  background: none !important;
+  border-radius: 50%;
+}
+.ai-thread.is-compact .ai-avatar.is-orb {
+  display: grid;
+  width: 24px;
+  height: 24px;
+}

@@ -902,3 +902,15 @@ button.sb-avatar {
   color: var(--muted);
   background: var(--canvas);
 }
+/* Sidebar: the STANLEY AI item's small living orb (owner, 2026-11-23). */
+.sb-item > .sb-orb {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+}
+.sb-orb .stanley-orb {
+  margin: -2px;
+}

@@ -12,6 +12,7 @@ import { Badge } from "@/shared/ui/controls";
 import { BrandLogo, UserAvatar, useCompanyName } from "./BrandLogo";
 import { COMPANY_NAV, branchNav } from "./navigation";
 import { usePermissions } from "@/services/permissions";
+import { StanleyOrb } from "@/features/assistant/StanleyOrb";
 import { useBranches } from "@/services/org";
 
 type Tip = { label: string; top: number; left: number } | null;
@@ -39,6 +40,8 @@ export function Sidebar() {
     const r = el.getBoundingClientRect();
     setTip({ label, top: r.top + r.height / 2, left: r.right + 12 });
   };
+  // The STANLEY AI item's orb wakes up when hovered.
+  const [orbAwake, setOrbAwake] = useState(false);
   const tipHandlers = (label: string) => ({
     onMouseEnter: (e: MouseEvent<HTMLElement>) => showTip(e.currentTarget, label),
     onFocus: (e: FocusEvent<HTMLElement>) => showTip(e.currentTarget, label),
@@ -89,6 +92,8 @@ export function Sidebar() {
               {items.map((item) => {
                 const Icon = item.icon;
                 const active = item.id === activeId;
+                const isOrb = item.id === "assistant";
+                const tips = tipHandlers(item.label);
                 return (
                   <li key={item.id}>
                     <button
@@ -96,7 +101,13 @@ export function Sidebar() {
                       aria-current={active ? "page" : undefined}
                       aria-label={collapsed ? item.label : undefined}
                       onClick={() => navigate(item.path)}
-                      {...tipHandlers(item.label)}
+                      {...tips}
+                      {...(isOrb
+                        ? {
+                            onMouseEnter: (e: MouseEvent<HTMLElement>) => (tips.onMouseEnter(e), setOrbAwake(true)),
+                            onMouseLeave: () => (tips.onMouseLeave(), setOrbAwake(false)),
+                          }
+                        : {})}
                     >
                       <span className="sb-item-hover" />
                       {active && (
@@ -106,7 +117,13 @@ export function Sidebar() {
                           transition={{ type: "spring", stiffness: 420, damping: 36 }}
                         />
                       )}
-                      <Icon size={20} strokeWidth={1.8} />
+                      {isOrb ? (
+                        <span className="sb-orb" aria-hidden="true">
+                          <StanleyOrb size={24} mood={active || orbAwake ? "awake" : "idle"} />
+                        </span>
+                      ) : (
+                        <Icon size={20} strokeWidth={1.8} />
+                      )}
                       <span className="sb-label sb-fade">{item.label}</span>
                     </button>
                   </li>

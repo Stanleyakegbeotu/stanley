@@ -24,6 +24,7 @@ import { activeConversation, deleteConversation, ensureConversation, getReturnPa
 import { verdictText } from "@/features/recovery/SystemHealth";
 import { downloadFile } from "@/features/settings/admin/ui";
 import { Composer, MODES, Thread, Welcome, useEngineContext } from "./chat";
+import { StanleyOrb } from "./StanleyOrb";
 
 const ACTIVITY_KEY = "stanley.ai.activity";
 const dt = (d: string) => new Date(d).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -71,8 +72,8 @@ export function AssistantPage({ mode, base }: { mode: Mode; base: string }) {
     <AnimatedPage>
       <section className="ai-workspace">
         <header className="ai-head">
-          <span className="ai-mark" aria-hidden="true">
-            <info.icon size={22} />
+          <span className="ai-mark is-orb" aria-hidden="true">
+            <StanleyOrb size={54} mood={busy ? "thinking" : ready ? "idle" : "awake"} />
           </span>
           <div className="ai-title">
             <div>
