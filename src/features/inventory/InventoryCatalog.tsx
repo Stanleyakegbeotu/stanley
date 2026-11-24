@@ -16,6 +16,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Banknote,
+  BookOpen,
   Bone,
   Brain,
   ChevronRight,
@@ -41,6 +42,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useApp } from "@/app/AppState";
+import { guideFor, GUIDE_SOURCES } from "@/data/serviceGuide";
 import { MoveToTrashDialog } from "@/features/admin/AdminLogs";
 import type { Currency } from "@/data/types";
 import { INVENTORY_NOTES, LEGACY_BRANCH_ID } from "@/data/legacy";
@@ -621,6 +623,7 @@ function ServiceTable({
   const [sort, setSort] = useState<ItemSort>(activity ? "performed" : "order");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [guideItem, setGuideItem] = useState<CatalogueItem | null>(null);
   const labels = useMemo(() => new Map(groups.map((g) => [g.key, g.label])), [groups]);
   const term = q.trim().toLowerCase();
   const bands = BANDS.map((b) => ({ ...b, count: items.filter((i) => i.price !== null && b.test(i.price)).length })).filter((b) => b.count > 0);
@@ -636,7 +639,9 @@ function ServiceTable({
         const b = BANDS.find((x) => x.id === band)!;
         if (i.price === null || !b.test(i.price)) return false;
       }
-      return !term || `${i.name} ${i.id}`.toLowerCase().includes(term);
+      if (!term) return true;
+      const g = guideFor(i.name, i.category);
+      return `${i.name} ${i.id} ${g.keywords.join(" ")}`.toLowerCase().includes(term);
     })
     .slice()
     .sort((a, b) => {
@@ -719,13 +724,13 @@ function ServiceTable({
                 <th className="right">Price</th>
                 {activity && <th>Performed · {periodText}</th>}
                 {activity && <th className="right">Revenue</th>}
-                {onEdit && <th className="right" aria-label="Actions" />}
+                <th className="right" aria-label="Actions" />
               </tr>
             </thead>
             <tbody>
               {visible.length === 0 ? (
                 <tr>
-                  <td colSpan={(onEdit ? 3 : 2) + (showCategory ? 1 : 0) + (activity ? 2 : 0)}>
+                  <td colSpan={3 + (showCategory ? 1 : 0) + (activity ? 2 : 0)}>
                     <EmptyState title={term ? `No services match “${q}”` : "No services in this view"} />
                   </td>
                 </tr>
@@ -750,6 +755,7 @@ function ServiceTable({
                               #{i.id}
                               {i.recorded && i.recorded.name !== i.name ? <> · recorded as {i.recorded.name}</> : i.recordedAs ? <> · recorded as {i.recordedAs}</> : null}
                             </small>
+                            <small className="inv-about">{guideFor(i.name, i.category).about}</small>
                             {i.note && (
                               <small className="inv-note" title={i.note}>
                                 <CircleAlert size={12} /> {i.note}
@@ -778,14 +784,20 @@ function ServiceTable({
                         </td>
                       )}
                       {activity && <td className="right num ep-nowrap">{act?.count ? formatMoney(act.revenue, currency) : <span className="lg-muted">—</span>}</td>}
-                      {onEdit && (
-                        <td className="right">
-                          <button type="button" className="inv-edit" onClick={() => onEdit(i)} aria-label={`Edit ${i.name}`} title="Edit name and price">
-                            <Pencil size={15} />
-                            <span>Edit</span>
+                      <td className="right">
+                        <div className="inv-actions">
+                          <button type="button" className="inv-edit" onClick={() => setGuideItem(i)} aria-label={`Guide for ${i.name}`} title="What it is, what it’s for, how it’s done and how to prepare">
+                            <BookOpen size={15} />
+                            <span>Guide</span>
                           </button>
-                        </td>
-                      )}
+                          {onEdit && (
+                            <button type="button" className="inv-edit" onClick={() => onEdit(i)} aria-label={`Edit ${i.name}`} title="Edit name and price">
+                              <Pencil size={15} />
+                              <span>Edit</span>
+                            </button>
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   );
                 })
@@ -795,7 +807,61 @@ function ServiceTable({
         </div>
         <Pagination page={safe} pageSize={pageSize} sizes={[10, 25, 50]} total={rows.length} noun="services" onPage={(p) => setPage(Math.min(Math.max(1, p), pages))} onPageSize={(s) => { setPageSize(s); setPage(1); }} />
       </div>
+      <ServiceGuideDialog item={guideItem} label={guideItem ? labels.get(guideItem.category) ?? guideItem.category : ""} price={guideItem?.price == null ? "No price recorded" : guideItem ? money(guideItem.price) : ""} onClose={() => setGuideItem(null)} />
     </>
+  );
+}
+
+/* ─────────────── Service guide (owner, 2026-11-23) ─────────────── */
+
+/** What a test is, what it's for, how it's done and how to prepare — the same guide the PR agents' app shows. */
+function ServiceGuideDialog({ item, label, price, onClose }: { item: CatalogueItem | null; label: string; price: string; onClose: () => void }) {
+  const g = item ? guideFor(item.name, item.category) : null;
+  return (
+    <Modal open={!!item} onClose={onClose} wide icon={BookOpen} title={item?.name ?? ""} description={item ? `${label} · ${price}` : ""}>
+      {g && (
+        <div className="svc-guide">
+          <section>
+            <h4>What it is</h4>
+            <p>{g.about}</p>
+          </section>
+          <section>
+            <h4>What it’s used for</h4>
+            <p>{g.usedFor}</p>
+          </section>
+          <section>
+            <h4>How it’s done</h4>
+            <ol>
+              {g.procedure.map((s) => (
+                <li key={s}>{s}</li>
+              ))}
+            </ol>
+          </section>
+          <section>
+            <h4>How to prepare</h4>
+            <p>{g.preparation}</p>
+          </section>
+          <dl className="svc-guide-facts">
+            <div>
+              <dt>Sample / test</dt>
+              <dd>{g.sample}</dd>
+            </div>
+            <div>
+              <dt>Usual time</dt>
+              <dd>{g.duration}</dd>
+            </div>
+          </dl>
+          {g.keywords.length > 0 && (
+            <p className="svc-guide-tags">
+              {g.keywords.map((k) => (
+                <span key={k}>{k}</span>
+              ))}
+            </p>
+          )}
+          <p className="svc-guide-note">General guidance for staff and PR agents, written from {GUIDE_SOURCES.join(", ")}. The requesting doctor and the branch confirm the details for each patient.</p>
+        </div>
+      )}
+    </Modal>
   );
 }
 
