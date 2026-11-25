@@ -172,7 +172,7 @@ function BranchCard({ branchId, periodText, onOpen }: { branchId: string; period
           </span>
           <strong className="num">{s ? <CountUp value={paid} format={(n) => formatMoney(n, c)} /> : "—"}</strong>
           <div className="bcard-pay-bar" aria-hidden="true">
-            <motion.i style={{ width: `${Math.max(billed > 0 ? 2 : 0, collected)}%` }} initial={m.reduced ? false : { scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ duration: 0.8, delay: 0.2 }} />
+            <motion.i style={{ width: `${Math.max(billed > 0 ? 2 : 0, collected)}%` }} initial={m.reduced ? false : { scaleX: 0 }} whileInView={{ scaleX: 1 }} viewport={{ once: true, amount: 0.3 }} transition={{ duration: 0.8, delay: 0.2 }} />
           </div>
           <small>{billed > 0 ? `${Math.round(collected)}% of ${formatMoney(billed, c)} billed in this period` : "Nothing billed in this period"}</small>
         </div>

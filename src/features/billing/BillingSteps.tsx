@@ -43,6 +43,7 @@ import { QuickServices, useQuickServices } from "./QuickServices";
 import {
   appliedPrice,
   balanceApprovers,
+  discountApprovers,
   canAdjustPrices,
   canGiveDiscount,
   maxDiscount,
@@ -505,8 +506,9 @@ export function ServicesStep({ s, set, branch, errors = {} }: StepProps) {
 
 export function PaymentStep({ s, set, branch, errors = {} }: StepProps) {
   const { user, staff } = useApp();
-  // Discounts: company switch + the role's "Give discounts" permission (Settings).
-  const canAdjust = canGiveDiscount(user.role);
+  // Discounts (owner, 2026-11-25): anyone billing can add one when the company allows discounts; the branch manager must approve it.
+  const canAdjust = useConfig().discounts.enabled;
+  const discountBy = useMemo(() => discountApprovers(staff, branch.id, user), [staff, branch.id, user]);
   const cfg = useConfig();
   useBranches();
   // Payment methods offered at this branch (company default or the branch's own set).
@@ -519,7 +521,7 @@ export function PaymentStep({ s, set, branch, errors = {} }: StepProps) {
   const money = (n: number) => formatMoney(n, branch.currency);
   const [discountToggle, setDiscountOpen] = useState(s.discount.amount > 0);
   // A discount error always shows its section, so the message is visible on the field.
-  const discountOpen = discountToggle || !!errors.discount || !!errors.discountReason;
+  const discountOpen = discountToggle || !!errors.discount || !!errors.discountReason || !!errors.discountApprovedBy;
   const p = s.payment;
   const setPay = (patch: Partial<typeof p>) => set((x) => ({ ...x, payment: { ...x.payment, ...patch } }));
   const num = (v: string) => Number(v.replace(/[^\d]/g, "")) || 0;
@@ -682,7 +684,7 @@ export function PaymentStep({ s, set, branch, errors = {} }: StepProps) {
           </span>
           <span>
             <b>{s.discount.amount > 0 ? `Discount · ${money(t.discount)}` : "Add a discount"}</b>
-            <small>{canAdjust ? "Optional — reduces the bill total; never more than the bill" : "Only the branch manager can give a discount"}</small>
+            <small>{canAdjust ? "Optional. Reduces the bill total; the branch manager approves it" : "Discounts are turned off for the company"}</small>
           </span>
           <span className="bl-tag">Optional</span>
         </button>
@@ -701,6 +703,24 @@ export function PaymentStep({ s, set, branch, errors = {} }: StepProps) {
               <input value={s.discount.reason} onChange={(e) => set((x) => ({ ...x, discount: { ...x.discount, reason: e.target.value } }))} placeholder="e.g. Staff family, approved by manager" />
               <FieldError msg={errors.discountReason} />
             </label>
+            {s.discount.amount > 0 && (
+              <div {...fe("bl-field", errors.discountApprovedBy)}>
+                <span className="bl-label">
+                  Approved by <i>*</i>
+                </span>
+                <SearchSelect
+                  value={s.discount.approvedBy ?? ""}
+                  ariaLabel="Discount approved by"
+                  placeholder="Select the branch manager"
+                  searchPlaceholder="Search"
+                  options={discountBy}
+                  onChange={(v) => set((x) => ({ ...x, discount: { ...x.discount, approvedBy: v } }))}
+                  className="select-btn bl-select"
+                  width={340}
+                />
+                {errors.discountApprovedBy ? <FieldError msg={errors.discountApprovedBy} /> : <small className="bl-help">Every discount is approved by the branch manager.</small>}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -806,6 +826,7 @@ export function PreviewStep({ s, branch, onEdit }: StepProps & { /** Opens that 
           ))}
           <Row label="Subtotal">{money(t.subtotal)}</Row>
           <Row label="Discount">{t.discount ? `− ${money(t.discount)} (${s.discount.reason.trim()})` : "No discount"}</Row>
+          {t.discount > 0 && <Row label="Discount approved by">{s.discount.approvedBy ? s.discount.approvedBy.replace("|", " · ") : "—"}</Row>}
           <div className="bl-total">
             <span>Total payable</span>
             <b>{money(t.total)}</b>

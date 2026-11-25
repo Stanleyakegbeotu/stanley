@@ -77,7 +77,7 @@ function TopCard({ title, subtitle, icon: Icon, rows, onMore }: { title: string;
               </span>
               <span className="rank-meta">{r.meta}</span>
               <span className="rank-bar">
-                <motion.div style={{ width: `${r.pct}%` }} initial={m.reduced ? false : { scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ duration: 0.7, delay: 0.25 + i * 0.05 }} />
+                <motion.div style={{ width: `${r.pct}%` }} initial={m.reduced ? false : { scaleX: 0 }} whileInView={{ scaleX: 1 }} viewport={{ once: true, amount: 0.3 }} transition={{ duration: 0.7, delay: 0.25 + i * 0.05 }} />
               </span>
             </motion.li>
           ))}

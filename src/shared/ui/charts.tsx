@@ -96,7 +96,7 @@ export function AreaLineChart({
                 d={`${linePath(s.values)} L ${x(n - 1)} ${H} L ${x(0)} ${H} Z`}
                 fill={`url(#${gid}-${s.key})`}
                 initial={reduced ? false : { opacity: 0 }}
-                animate={{ opacity: 1 }}
+                whileInView={{ opacity: 1 }} viewport={{ once: true, amount: 0.3 }}
                 transition={{ duration: 0.6, delay: reduced ? 0 : 0.75 + si * 0.1 }}
               />
             ) : null,
@@ -112,7 +112,7 @@ export function AreaLineChart({
               strokeLinecap="round"
               vectorEffect="non-scaling-stroke"
               initial={reduced || s.dashed ? false : { pathLength: 0 }}
-              animate={{ pathLength: 1 }}
+              whileInView={{ pathLength: 1 }} viewport={{ once: true, amount: 0.3 }}
               transition={{ duration: 1, delay: si * 0.12, ease: EASE }}
             />
           ))}
@@ -188,7 +188,7 @@ export function VBarChart({
             className="vbar-fill"
             style={{ height: `${Math.max(2, (v / max) * 100)}%`, background: color, opacity: 0.35 + 0.65 * (v / max) }}
             initial={reduced ? false : { scaleY: 0 }}
-            animate={{ scaleY: 1 }}
+            whileInView={{ scaleY: 1 }} viewport={{ once: true, amount: 0.3 }}
             transition={{ duration: 0.6, delay: reduced ? 0 : 0.15 + i * 0.04, ease: EASE }}
           />
           <small>{labels[i]}</small>
@@ -282,7 +282,7 @@ export function HBarList({ items, valueLabel = "Value", shareLabel = "Share of t
                 className="hbar-fill"
                 style={{ width: `${(it.value / max) * 100}%`, background: it.color ?? "var(--brand-500)" }}
                 initial={reduced ? false : { scaleX: 0 }}
-                animate={{ scaleX: 1 }}
+                whileInView={{ scaleX: 1 }} viewport={{ once: true, amount: 0.3 }}
                 transition={{ duration: 0.7, delay: reduced ? 0 : 0.1 + i * 0.05, ease: EASE }}
               />
             </div>
@@ -307,15 +307,16 @@ export interface Segment {
 /** Stacked horizontal bar with a hoverable legend (e.g. outstanding-balance ageing). */
 export function SegmentBar({ segments, format, tipFormat, totalLabel, ariaLabel }: { segments: Segment[]; format: (n: number) => string; /** Exact figures in the tooltip (defaults to `format`). */ tipFormat?: (n: number) => string; totalLabel: string; ariaLabel: string }) {
   const tip = useChartTip();
+  const reduced = useReducedMotion();
   const total = segments.reduce((s, x) => s + x.value, 0);
   const tipOf = (s: Segment): Tip => ({ title: s.label, rows: [{ label: "Amount", value: (tipFormat ?? format)(s.value), color: s.color }, { label: `Share of ${totalLabel}`, value: pct(s.value, total) }, ...(s.rows ?? [])], note: s.hint });
   return (
     <div className="chart-hoverable" ref={tip.ref} onMouseLeave={tip.hide}>
-      <div className="aging" role="img" aria-label={ariaLabel}>
+      <motion.div className="aging" role="img" aria-label={ariaLabel} initial={reduced ? false : { clipPath: "inset(0 100% 0 0 round 999px)" }} whileInView={{ clipPath: "inset(0 0% 0 0 round 999px)" }} viewport={{ once: true, amount: 0.3 }} transition={{ duration: 0.9, ease: EASE }}>
         {segments.map((s) =>
           s.value > 0 ? <div key={s.label} className={tip.active && tip.active !== s.label ? "is-dim" : ""} style={{ flex: total ? s.value / total : 0, background: s.color }} onMouseMove={(e) => tip.show(e, tipOf(s), s.label)} /> : null,
         )}
-      </div>
+      </motion.div>
       <div className="aging-legend">
         {segments.map((s) => (
           <div key={s.label} className={tip.active === s.label ? "is-hover" : ""} onMouseMove={(e) => tip.show(e, tipOf(s), s.label)}>
@@ -394,7 +395,7 @@ export function Donut({
                 strokeWidth={hot ? stroke + 4 : stroke}
                 transform={`rotate(${starts[i] * 360 - 90} ${size / 2} ${size / 2})`}
                 initial={reduced ? false : { pathLength: 0 }}
-                animate={{ pathLength: Math.max(0, frac - 0.004) }}
+                whileInView={{ pathLength: Math.max(0, frac - 0.004) }} viewport={{ once: true, amount: 0.3 }}
                 transition={{ duration: 0.8, delay: reduced ? 0 : 0.15 + i * 0.12, ease: EASE }}
               />
             );
@@ -428,7 +429,7 @@ export function ProgressBar({ value, color }: { value: number; color?: string })
         key={Math.round(value)}
         style={{ width: `${Math.min(100, Math.max(0, value))}%`, background: color }}
         initial={reduced ? false : { scaleX: 0 }}
-        animate={{ scaleX: 1 }}
+        whileInView={{ scaleX: 1 }} viewport={{ once: true, amount: 0.3 }}
         transition={{ duration: 0.8, delay: reduced ? 0 : 0.2, ease: EASE }}
       />
     </div>

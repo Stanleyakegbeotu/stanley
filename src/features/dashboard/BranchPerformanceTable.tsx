@@ -281,7 +281,7 @@ function BranchTable({ rows, focusId, onOpen }: { rows: BranchPerformance[]; foc
                             <motion.i
                               style={{ width: `${Math.max(2, r.currencyShare ?? 0)}%` }}
                               initial={m.reduced ? false : { scaleX: 0 }}
-                              animate={{ scaleX: 1 }}
+                              whileInView={{ scaleX: 1 }} viewport={{ once: true, amount: 0.3 }}
                               transition={{ duration: 0.7, delay: 0.25 }}
                             />
                           </span>
