@@ -3,6 +3,8 @@
  * permissions). Owner's sequence (2026-11-21):
  *
  *  1. Welcome banner (reporting period)
+ *  1b. Incoming referrals: the folder of patients PR agents referred
+ *     (owner, 2026-11-26; the same folder as the mobile app)
  *  2. Quick actions — shortcuts to the daily branch work
  *  3. Daily payment summary — money received by method (Cash, POS, Transfer);
  *     each opens a table of the patients who paid that way
@@ -60,6 +62,7 @@ import { useDashboardData } from "@/features/dashboard/useDashboardData";
 import { PatientRecordModal } from "@/features/shared/PatientRecord";
 import { categoryMeta } from "@/features/inventory/InventoryCatalog";
 import { SideModal } from "./SideModal";
+import { BranchReferralsSection } from "@/features/referrals/IncomingReferrals";
 
 /** "today", "yesterday", "this week" … or "in the selected dates" — reads naturally after a verb. */
 const whenText = (pl: string) => (pl === "today" || pl === "yesterday" || pl.startsWith("this ") ? pl : "in the selected dates");
@@ -114,6 +117,7 @@ export function BranchHome({ branch }: { branch: Branch }) {
         summary={summary}
         range={range}
       />
+      <BranchReferralsSection branch={branch} canBill={can("billing")} />
       <QuickActions go={go} can={can} />
       <PaymentSummary branch={branch} range={range} periodText={pl} go={go} onOpenVisit={setViewing} />
       <PaymentStatus branch={branch} range={range} periodText={pl} onOpenVisit={setViewing} />

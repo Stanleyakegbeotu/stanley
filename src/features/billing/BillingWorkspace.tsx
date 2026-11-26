@@ -10,7 +10,7 @@
  *  • Completing validates everything, checks for same-day duplicates, saves
  *    the order, removes the draft, then shows the receipt (never before).
  */
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, ArrowRight, Copy, CreditCard, FilePlus2, FileStack, FlaskConical, Hash, Link2, Search, Trash2, TriangleAlert, UserRound, type LucideIcon } from "lucide-react";
 import { MoveToTrashDialog } from "@/features/admin/AdminLogs";
@@ -46,6 +46,8 @@ import {
 } from "@/services/billing";
 import { PatientStep, PaymentStep, PreviewStep, ServicesStep } from "./BillingSteps";
 import { ReceiptStep } from "./BillingReceipt";
+import { BillingReferralsStrip, useIncomingMany } from "@/features/referrals/IncomingReferrals";
+import { findIncoming, type Incoming } from "@/services/incoming";
 
 const STEPS = ["Patient", "Services", "Payment", "Preview", "Receipt"] as const;
 const EDIT_TITLE: Record<1 | 2 | 3, string> = { 1: "Patient details", 2: "Services", 3: "Payment" };
@@ -105,6 +107,76 @@ export function BillingWorkspace({ branch }: { branch: Branch }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftParam]);
+
+  /* Incoming referrals (owner, 2026-11-26): ?incoming=<referral ID> starts the bill with the patient,
+     the PR agent and the requested tests filled in, and opens on Payment (Back to remove a test). */
+  const incoming = useIncomingMany(useMemo(() => [branch.id], [branch.id]));
+  const startIncoming = (r: Incoming) => {
+    const cur = latest.current;
+    if (cur && cur.step < 5 && hasContent(cur)) saveDraft(cur);
+    const open = store.drafts.find((d) => d.referralId === r.id && d.branchId === branch.id);
+    if (open) {
+      start(open);
+      setNotice(`Referral ${r.id}: the bill started earlier is open again.`);
+      return;
+    }
+    const s0: BillingSession = {
+      ...newSession(branch.id, "referral", me),
+      patient: { uuid: null, existingId: null, existingType: null, name: r.patient.name, phone: r.patient.phone },
+      walkIn: false,
+      agentId: r.agentId,
+      hospital: null,
+      referralId: r.id,
+      services: r.services,
+      step: 1,
+      ...(r.priceAsk ? { discount: { amount: r.priceAsk.amount, reason: `PR agent asked: ${r.priceAsk.reason}`, approvedBy: "" } } : {}),
+    };
+    const ready = validateStep(s0, 1, agents).ok && validateStep(s0, 2, agents).ok;
+    start(ready ? { ...ensureReservation(s0), step: 3 } : s0);
+    setNotice(
+      `Referral ${r.id} from ${r.agentName}: ${ready ? `${r.patient.name} and ${r.services.length} test${r.services.length === 1 ? "" : "s"} are filled in. Take the payment, or go back to remove a test.` : "check the patient's details, then continue."}${r.priceAsk ? ` The PR agent asked for ${money(r.priceAsk.amount)} off: it is filled in as a discount, waiting for the Branch Manager's approval.` : ""}`,
+    );
+  };
+  const incParam = route.query.get("incoming");
+  useEffect(() => {
+    if (!incParam) return;
+    const r = findIncoming(incoming, incParam);
+    if (r) startIncoming(r);
+    else showToast("That referral is no longer in the folder");
+    navigate(`/branch/${branch.id}/billing`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incParam, incoming.length]);
+  /* A referred patient found by their referral ID (registered at this branch before). */
+  const startFromMatch = (m: NonNullable<ReturnType<typeof lookupReferral>>, referralId: string) => {
+    const s = newSession(branch.id, "referral", me);
+    const ready = m.services.length > 0;
+    start({
+      ...s,
+      step: ready ? 3 : 2,
+      patient: { uuid: m.patient.uuid, existingId: m.patient.patientId, existingType: m.patient.type, name: m.patient.name, phone: m.patient.phone },
+      walkIn: false,
+      agentId: m.agentId,
+      hospital: m.hospital,
+      referralId,
+      services: m.services,
+    });
+    setNotice(ready ? `Referral ${referralId} found — patient, PR agent and requested tests are filled in. Record the payment.` : `Referral ${referralId} found — ${m.patient.name} and their PR agent are filled in. Add the tests for this visit.`);
+  };
+  /* Referral ID from the dashboard: ?refid=1 asks for it; ?refid=<ID> continues with that referral. */
+  const refParam = route.query.get("refid");
+  useEffect(() => {
+    if (!refParam) return;
+    if (refParam === "1") setRefOpen(true);
+    else {
+      const r = findIncoming(incoming, refParam);
+      const m = r ? null : lookupReferral(branch.id, refParam);
+      if (r) startIncoming(r);
+      else if (m) startFromMatch(m, refParam.toUpperCase());
+      else setRefOpen(true);
+    }
+    navigate(`/branch/${branch.id}/billing`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refParam]);
 
   /* Auto-save while working (debounced). */
   useEffect(() => {
@@ -325,7 +397,10 @@ export function BillingWorkspace({ branch }: { branch: Branch }) {
       />
 
       {!session ? (
-        <Landing branch={branch} drafts={drafts} onNew={() => (drafts.length ? setDraftPrompt(true) : start(newSession(branch.id, "new", me)))} onReferral={() => setRefOpen(true)} onResume={(d) => start(d)} />
+        <>
+          <BillingReferralsStrip branch={branch} onStart={startIncoming} />
+          <Landing branch={branch} drafts={drafts} onNew={() => (drafts.length ? setDraftPrompt(true) : start(newSession(branch.id, "new", me)))} onReferral={() => setRefOpen(true)} onResume={(d) => start(d)} />
+        </>
       ) : (
         <>
           <nav className="bl-stepper" aria-label="Billing steps">
@@ -473,21 +548,14 @@ export function BillingWorkspace({ branch }: { branch: Branch }) {
       {refOpen && (
         <ReferralDialog
           branch={branch}
+          incoming={incoming}
           onClose={() => setRefOpen(false)}
+          onIncoming={(r) => {
+            setRefOpen(false);
+            startIncoming(r);
+          }}
           onFound={(m, referralId) => {
-            const s = newSession(branch.id, "referral", me);
-            const ready = m.services.length > 0;
-            start({
-              ...s,
-              step: ready ? 3 : 2,
-              patient: { uuid: m.patient.uuid, existingId: m.patient.patientId, existingType: m.patient.type, name: m.patient.name, phone: m.patient.phone },
-              walkIn: false,
-              agentId: m.agentId,
-              hospital: m.hospital,
-              referralId,
-              services: m.services,
-            });
-            setNotice(ready ? `Referral ${referralId} found — patient, PR agent and requested tests are filled in. Record the payment.` : `Referral ${referralId} found — ${m.patient.name} and their PR agent are filled in. Add the tests for this visit.`);
+            startFromMatch(m, referralId);
             setRefOpen(false);
           }}
         />
@@ -825,7 +893,7 @@ function SamePatientDrafts({ drafts, money, onResume, onDismiss }: { drafts: Bil
 
 /* ─────────────── Referral ID dialog ─────────────── */
 
-function ReferralDialog({ branch, onClose, onFound }: { branch: Branch; onClose: () => void; onFound: (m: NonNullable<ReturnType<typeof lookupReferral>>, referralId: string) => void }) {
+function ReferralDialog({ branch, incoming, onClose, onFound, onIncoming }: { branch: Branch; incoming: Incoming[]; onClose: () => void; onFound: (m: NonNullable<ReturnType<typeof lookupReferral>>, referralId: string) => void; onIncoming: (r: Incoming) => void }) {
   const prefix = `${branchPrefix(branch.id)}-R`;
   const [digits, setDigits] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -837,6 +905,9 @@ function ReferralDialog({ branch, onClose, onFound }: { branch: Branch; onClose:
       focusFirstError();
       return;
     }
+    // A referral in the branch's folder (sent from the Referrer Portal) comes first.
+    const inc = findIncoming(incoming, full);
+    if (inc) return onIncoming(inc);
     // Referred patients already on this device are found even offline.
     const m = lookupReferral(branch.id, full);
     if (!m) {
