@@ -3,6 +3,7 @@ import { createPortal, flushSync } from "react-dom";
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "framer-motion";
 import { ArrowLeft, Building2, ChevronRight, LogOut, PanelLeftClose, PanelLeftOpen, Store } from "lucide-react";
 import { useApp } from "@/app/AppState";
+import { useConversations } from "@/features/inbox/InboxPage";
 import { branchRoute } from "@/app/router";
 import { THEMES, type ThemeId } from "@/app/themes";
 import { ACTIVE_BRANCHES, BRANCHES, getBranch } from "@/data/company";
@@ -23,6 +24,7 @@ type Tip = { label: string; top: number; left: number } | null;
  */
 export function Sidebar() {
   const { collapsed, setCollapsed, route, navigate, context, user } = useApp();
+  const { unread } = useConversations();
   // Re-render when the Company Admin changes permissions or branches.
   usePermissions();
   useBranches();
@@ -125,6 +127,7 @@ export function Sidebar() {
                         <Icon size={20} strokeWidth={1.8} />
                       )}
                       <span className="sb-label sb-fade">{item.label}</span>
+                      {item.id === "messages" && unread > 0 && <span className="sb-count">{unread > 99 ? "99+" : unread}</span>}
                     </button>
                   </li>
                 );

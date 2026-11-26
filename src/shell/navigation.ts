@@ -8,6 +8,7 @@ import {
   Handshake,
   LayoutGrid,
   MessageSquareWarning,
+  MessagesSquare,
   Package,
   ReceiptText,
   ScrollText,
@@ -36,6 +37,7 @@ export interface NavItem {
  */
 export const COMPANY_NAV: NavItem[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutGrid, path: "/dashboard" },
+  { id: "messages", label: "Inbox", icon: MessagesSquare, path: "/messages" },
   { id: "branches", label: "Branches", icon: Building2, path: "/branches" },
   { id: "inventory", label: "Inventory", icon: Package, path: "/inventory" },
   { id: "staff", label: "Staff Management", icon: Users, path: "/staff" },
@@ -53,6 +55,7 @@ export const COMPANY_NAV: NavItem[] = [
 /** BRANCH OPERATIONS — a separate workspace with its own navigation. */
 export const BRANCH_NAV_ITEMS: Omit<NavItem, "path">[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutGrid },
+  { id: "messages", label: "Inbox", icon: MessagesSquare },
   { id: "billing", label: "Billing", icon: ReceiptText },
   { id: "drafts", label: "Drafts", icon: FilePenLine },
   { id: "records", label: "Records", icon: FolderOpen },
