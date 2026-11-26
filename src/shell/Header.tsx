@@ -33,6 +33,7 @@ import { InboxButton } from "@/features/inbox/InboxPage";
 import { useNetworkStatus } from "@/shared/useNetworkStatus";
 import { syncQueue, useBilling } from "@/services/billing";
 import { expenseSyncQueue, useExpenses } from "@/services/expenses";
+import { staffKey, useAccountAccess } from "@/services/accountAccess";
 
 export function Header() {
   const { route } = useApp();
@@ -381,7 +382,9 @@ function ProfileMenu() {
   };
   const settingsLabel = user.kind === "admin" ? "Company settings" : user.kind === "manager" ? "Branch settings" : "Account settings";
   // Demo stand-in for sign-in: the branch's people (manager first).
-  const accounts = br ? staff.filter((s) => s.branchId === br.branchId && s.status !== "Left" && s.status !== "Suspended").sort((a, b) => Number(isManager(b)) - Number(isManager(a)) || a.name.localeCompare(b.name)) : [];
+  const access = useAccountAccess();
+  // Deactivated accounts can't sign in (Staff Management → Access & account).
+  const accounts = br ? staff.filter((s) => s.branchId === br.branchId && s.status !== "Left" && s.status !== "Suspended" && !access[staffKey(s.id)]?.off).sort((a, b) => Number(isManager(b)) - Number(isManager(a)) || a.name.localeCompare(b.name)) : [];
   const hasManager = accounts.some(isManager);
   return (
     <>

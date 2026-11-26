@@ -21,7 +21,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { BadgeCheck, Briefcase, CalendarDays, Crown, Download, KeyRound, Landmark, Mail, MapPin, Pencil, Phone, Plus, ShieldCheck, Trash2, UserRound, UserRoundCog, Users, Wallet, X } from "lucide-react";
+import { BadgeCheck, Briefcase, CalendarDays, Crown, Download, FileWarning, KeyRound, Landmark, Mail, MapPin, Pencil, Phone, Plus, ShieldCheck, Trash2, UserRound, UserRoundCog, Users, Wallet, X } from "lucide-react";
 import { useApp } from "@/app/AppState";
 import { getBranch } from "@/data/company";
 import { DEPARTMENTS, EMPLOYMENT_TYPES, MANAGER_ROLE, RECORD_ROLES, STAFF_ROLES, STAFF_STATUSES, isManager, managerOf, netPay, usesApp, type StaffRecord, type StaffStatus } from "@/data/userRecords";
@@ -36,6 +36,9 @@ import { FieldError, focusFirstError } from "@/shared/ui/FieldError";
 import { NAME_INPUT_PROPS, nameChange } from "@/shared/nameCase";
 import { MoveToTrashDialog } from "@/features/admin/AdminLogs";
 import { resolvePhoto, useSettings } from "@/services/settingsStore";
+import { staffKey, useAccountAccess } from "@/services/accountAccess";
+import { queriesOf, useStaffQueries } from "@/services/staffQueries";
+import { AccountAccessPanel, QueriesPanel } from "./StaffQueries";
 
 export const staffInitials = (name: string) =>
   name
@@ -85,6 +88,8 @@ function downloadStaff(list: StaffRecord[], branchName: string, withPay: boolean
 }
 
 export function StaffBranchView({ branchId, onAdd }: { branchId: string; onAdd: (role?: string) => void }) {
+  const access = useAccountAccess();
+  const queries = useStaffQueries();
   const { staff } = useApp();
   const seesPay = useSeesPay();
   const [who, setWho] = useState<"all" | "app" | "records">("all");
@@ -242,7 +247,8 @@ export function StaffBranchView({ branchId, onAdd }: { branchId: string; onAdd: 
                       <Badge tone={STATUS_TONE[s.status]} dot>
                         {s.status}
                       </Badge>
-                      {usesApp(s) ? <Badge tone="brand">Uses STANLEY</Badge> : <Badge>Record only</Badge>}
+                      {usesApp(s) ? access[staffKey(s.id)]?.off ? <Badge tone="danger">Account off</Badge> : <Badge tone="brand">Uses STANLEY</Badge> : <Badge>Record only</Badge>}
+                      {queriesOf(queries, s.id).some((q) => !q.outcome) && <Badge tone="warn">Open query</Badge>}
                     </span>
                   </span>
                 </span>
@@ -286,7 +292,7 @@ export function StaffBranchView({ branchId, onAdd }: { branchId: string; onAdd: 
 
 /* ─────────────── Profile pop-up ─────────────── */
 
-type Tab = "overview" | "access" | "pay" | "edit";
+type Tab = "overview" | "queries" | "access" | "pay" | "edit";
 
 export function StaffProfile({ member, onClose }: { member: StaffRecord; onClose: () => void }) {
   const { staff, moveStaffToTrash, showToast } = useApp();
@@ -302,6 +308,9 @@ export function StaffProfile({ member, onClose }: { member: StaffRecord; onClose
   const roleDef = STAFF_ROLES.find((r) => r.value === member.role);
   const seesPay = useSeesPay();
   const appUser = usesApp(member);
+  const queries = queriesOf(useStaffQueries(), member.id);
+  const openQ = queries.filter((q) => !q.outcome).length;
+  const accountOff = !!useAccountAccess()[staffKey(member.id)]?.off;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -314,7 +323,8 @@ export function StaffProfile({ member, onClose }: { member: StaffRecord; onClose
 
   const nav: { id: Tab; label: string; icon: typeof UserRound; note: string }[] = [
     { id: "overview", label: "Overview", icon: UserRound, note: mgr ? `Heads ${formatCount(team.length)} staff` : "Details & team" },
-    { id: "access", label: "Access & permissions", icon: KeyRound, note: appUser ? "Decided by the role" : "Record only, no sign-in" },
+    { id: "queries", label: "Queries", icon: FileWarning, note: queries.length ? `${formatCount(queries.length)} on record${openQ ? ` · ${openQ} open` : ""}` : "None on record" },
+    { id: "access", label: "Access & account", icon: KeyRound, note: !appUser ? "Record only, no sign-in" : accountOff ? "Account deactivated" : "Decided by the role" },
     ...(seesPay ? [{ id: "pay" as Tab, label: "Pay & bank", icon: Wallet, note: member.pay ? `${money(netPay(member.pay))} a month` : "Not set yet" }] : []),
     { id: "edit", label: "Edit profile", icon: Pencil, note: seesPay ? "Details, job, pay & bank" : "Details, role & status" },
   ];
@@ -335,6 +345,8 @@ export function StaffProfile({ member, onClose }: { member: StaffRecord; onClose
               <span className="ap-badges">
                 {mgr && <em>Head of branch</em>}
                 <em>{member.status}</em>
+                {accountOff && <em className="is-off">Account off</em>}
+                {openQ > 0 && <em className="is-warn">Open query</em>}
               </span>
             </div>
 
@@ -404,8 +416,8 @@ export function StaffProfile({ member, onClose }: { member: StaffRecord; onClose
                 <span className="fd-eyebrow">
                   Staff profile · {branch?.name} branch
                 </span>
-                <h2 id={titleId}>{tab === "edit" ? `Edit ${member.name}` : tab === "access" ? "Access & permissions" : tab === "pay" ? "Pay & bank" : member.name}</h2>
-                <p>{tab === "edit" ? "Update details, role, employment or status. Changes last for this session until the database is connected." : tab === "access" ? `What a ${member.role} can do in STANLEY. Access follows the role.` : mgr ? "Head of this branch — every staff member reports to them." : `${member.role} at ${branch?.name} · reports to ${manager?.name ?? "the branch manager"}.`}</p>
+                <h2 id={titleId}>{tab === "edit" ? `Edit ${member.name}` : tab === "access" ? "Access & account" : tab === "pay" ? "Pay & bank" : tab === "queries" ? "Queries" : member.name}</h2>
+                <p>{tab === "queries" ? "Queries issued to this person: the date, the reason, their response and the outcome. Only the Branch Manager and the Company Admin see them." : tab === "edit" ? "Update details, role, employment or status. Changes last for this session until the database is connected." : tab === "access" ? `What a ${member.role} can do in STANLEY. Access follows the role.` : mgr ? "Head of this branch — every staff member reports to them." : `${member.role} at ${branch?.name} · reports to ${manager?.name ?? "the branch manager"}.`}</p>
               </div>
               <button type="button" className="fd-close" onClick={onClose} aria-label="Close profile" data-close>
                 <X size={20} />
@@ -563,6 +575,9 @@ export function StaffProfile({ member, onClose }: { member: StaffRecord; onClose
                   {member.status !== "Active" && <p className="fd-note ap-error">While {member.status.toLowerCase()}, this person cannot sign in.</p>}
                 </section>
               )}
+              {tab === "access" && appUser && !mgr && <AccountAccessPanel accountKey={staffKey(member.id)} name={member.name} what={member.role} branchId={member.branchId} />}
+
+              {tab === "queries" && <QueriesPanel staffId={member.id} staffName={member.name} branchId={member.branchId} />}
 
               {tab === "edit" && <StaffEditForm member={member} branchId={member.branchId} onSaved={() => setTab("overview")} />}
             </div>

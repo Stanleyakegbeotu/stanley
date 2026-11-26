@@ -28,8 +28,12 @@ import {
   UserX,
   Users,
   X,
+  Power,
 } from "lucide-react";
 import { useApp } from "@/app/AppState";
+import { can, usePermissions } from "@/services/permissions";
+import { agentKey, useAccountAccess } from "@/services/accountAccess";
+import { AccountAccessPanel } from "@/features/staff/StaffQueries";
 import { getBranch } from "@/data/company";
 import type { DateRange } from "@/data/types";
 import { DATA_START, TODAY, addDays, diffDays, isoDate } from "@/data/demo/generator";
@@ -60,6 +64,13 @@ const NO_HOSPITAL = "No hospital assigned";
 const money = (n: number, compact = false) => formatMoney(n, "NGN", compact);
 /** Two-letter initials that skip titles (Dr, Nrs, Mr…) and punctuation: "Dr Abegunde Babatunde" → "AB". */
 const TITLES = new Set(["DR", "DOC", "NRS", "NURSE", "MR", "MRS", "MS", "MISS", "PROF", "PHARM", "ENGR", "CHIEF", "SIR", "MATRON"]);
+/** What this person may do in PR Management: edit agents, and see commission (front desk: neither by default). */
+function usePrRights() {
+  const { user } = useApp();
+  usePermissions();
+  return { manage: can(user.role, "referral.manage"), money: can(user.role, "referral.commission") };
+}
+
 function agentInitials(name: string): string {
   const words = name.toUpperCase().replace(/[^A-Z\s]/g, " ").split(/\s+/).filter(Boolean);
   const real = words.filter((w) => !TITLES.has(w));
@@ -89,6 +100,7 @@ export function PRCatalog({
   initialAgent?: number | null;
 }) {
   const { agents: allAgents, agentEdits } = useApp();
+  const rights = usePrRights();
   const commission = useCommission();
   const [rateOpen, setRateOpen] = useState(false);
   const m = useMotionPreset();
@@ -154,7 +166,7 @@ export function PRCatalog({
           { label: "PR agents", icon: Handshake, value: formatCount(agents.length), caption: `${formatCount(agents.length - unassigned.length)} with a hospital${added ? ` · ${added} added` : ""}` },
           { label: "Partner hospitals", icon: Hospital, value: formatCount(directory.length), caption: flagged ? `${flagged} codes need review` : "From agent assignments" },
           { label: `Referrals · ${periodText}`, icon: TrendingUp, value: formatCount(totals.referrals), caption: `${formatCount(activity.size)} agents referred · ${money(totals.revenue, true)}` },
-          { label: `Commission · ${periodText}`, icon: Percent, value: money(totals.commission), caption: `${rateSummary()}` },
+          ...(rights.money ? [{ label: `Commission · ${periodText}`, icon: Percent, value: money(totals.commission), caption: `${rateSummary()}` }] : []),
         ]}
       />
 
@@ -179,9 +191,11 @@ export function PRCatalog({
               <Pencil size={15} /> Edited <b>{edited}</b>
             </button>
           )}
-          <button type="button" onClick={() => setRateOpen(true)} title="Change the commission rate for all PR agents">
-            <Percent size={15} /> Commission rate <b>{pct(commission.rate)}</b>
-          </button>
+          {rights.money && (
+            <button type="button" onClick={() => setRateOpen(true)} title="Change the commission rate for all PR agents">
+              <Percent size={15} /> Commission rate <b>{pct(commission.rate)}</b>
+            </button>
+          )}
         </div>
         <RateDialog open={rateOpen} onClose={() => setRateOpen(false)} />
         <SelectMenu
@@ -370,6 +384,8 @@ function AgentsModal({
   onAdd: (hospital: string) => void;
 }) {
   const { agentEdits } = useApp();
+  const rights = usePrRights();
+  const access = useAccountAccess();
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<AgentFilter>(initialFilter);
   const [sort, setSort] = useState<AgentSort>("referrals");
@@ -419,9 +435,11 @@ function AgentsModal({
           <Button variant="secondary" onClick={onClose}>
             Close
           </Button>
-          <Button onClick={() => onAdd(scope.kind === "hospital" ? scope.key : "")}>
-            <Plus size={16} /> {scope.kind === "hospital" ? `Add agent to ${scope.key}` : "Add PR agent"}
-          </Button>
+          {rights.manage && (
+            <Button onClick={() => onAdd(scope.kind === "hospital" ? scope.key : "")}>
+              <Plus size={16} /> {scope.kind === "hospital" ? `Add agent to ${scope.key}` : "Add PR agent"}
+            </Button>
+          )}
         </>
       }
     >
@@ -430,7 +448,7 @@ function AgentsModal({
           { label: "PR agents", icon: Handshake, value: formatCount(base.length), caption: `${formatCount(base.filter((a) => hasPhone(a.phone)).length)} with a phone number` },
           { label: `Referred · ${periodText}`, icon: TrendingUp, value: formatCount(referred.length), caption: `${formatCount(sum.referrals)} referrals` },
           { label: "Revenue generated", icon: Banknote, value: money(sum.revenue), caption: "Billed value of referred tests" },
-          { label: "Commission", icon: Percent, value: money(sum.commission), caption: rateSummary() },
+          ...(rights.money ? [{ label: "Commission", icon: Percent, value: money(sum.commission), caption: rateSummary() }] : []),
         ]}
       />
 
@@ -472,14 +490,14 @@ function AgentsModal({
                 <th>Phone</th>
                 <th className="right">Referrals</th>
                 <th className="right">Revenue</th>
-                <th className="right">Commission</th>
+                {rights.money && <th className="right">Commission</th>}
                 <th className="right" aria-label="Actions" />
               </tr>
             </thead>
             <tbody>
               {visible.length === 0 ? (
                 <tr>
-                  <td colSpan={showHospital ? 7 : 6}>
+                  <td colSpan={(showHospital ? 7 : 6) - (rights.money ? 0 : 1)}>
                     <EmptyState title={term ? `No agents match “${q}”` : "No agents in this view"} />
                   </td>
                 </tr>
@@ -499,6 +517,7 @@ function AgentsModal({
                               <strong>{a.name}</strong>
                               {a.source === "user" && <Badge tone="brand">Added</Badge>}
                               {isEdited(a) && <Badge tone="info">Edited</Badge>}
+                              {access[agentKey(a.id)]?.off && <Badge tone="danger">Account off</Badge>}
                             </span>
                             <small className="mono">#{a.id}</small>
                           </div>
@@ -510,7 +529,7 @@ function AgentsModal({
                         <strong>{formatCount(ac?.referrals ?? 0)}</strong>
                       </td>
                       <td className="right num ep-nowrap">{ac ? money(ac.revenue) : <span className="lg-muted">—</span>}</td>
-                      <td className="right num ep-nowrap">{ac ? money(ac.commission) : <span className="lg-muted">—</span>}</td>
+                      {rights.money && <td className="right num ep-nowrap">{ac ? money(ac.commission) : <span className="lg-muted">—</span>}</td>}
                       <td className="right">
                         <button
                           type="button"
@@ -541,7 +560,7 @@ function AgentsModal({
 /* ─────────────── Agent profile (split layout, like the create dialogs) ─────────────── */
 
 type ProfilePeriod = "today" | "yesterday" | "week" | "month" | "year" | "all" | "day";
-type ProfileTab = "overview" | "patients" | "edit";
+type ProfileTab = "overview" | "patients" | "account" | "edit";
 
 const PROFILE_PERIODS: { value: Exclude<ProfilePeriod, "day">; label: string }[] = [
   { value: "today", label: "Today" },
@@ -562,6 +581,8 @@ const inRange = (d: Date, r: DateRange) => d >= r.from && d < addDays(r.to, 1);
 
 function AgentProfile({ agent, directory, onClose }: { agent: AgentRecord; directory: HospitalEntry[]; activity?: AgentActivity; periodText?: string; onClose: () => void }) {
   const { revertAgent, showToast, agentEdits, moveAgentToTrash } = useApp();
+  const rights = usePrRights();
+  const accountOff = !!useAccountAccess()[agentKey(agent.id)]?.off;
   const [trashOpen, setTrashOpen] = useState(false);
   useCommission(); // re-render when a rate changes
   const m = useMotionPreset();
@@ -606,9 +627,9 @@ function AgentProfile({ agent, directory, onClose }: { agent: AgentRecord; direc
   const periodName = period === "day" ? formatShortDate(selRange.from) : PROFILE_PERIODS.find((p) => p.value === period)?.label ?? "";
 
   const nav: { id: ProfileTab; label: string; icon: typeof UserRound; note: string }[] = [
-    { id: "overview", label: "Overview", icon: TrendingUp, note: "Commission & revenue" },
+    { id: "overview", label: "Overview", icon: TrendingUp, note: rights.money ? "Commission & revenue" : "Referrals & revenue" },
     { id: "patients", label: "Referred patients", icon: Users, note: `${formatCount(all.patients)} since records began` },
-    { id: "edit", label: "Edit profile", icon: Pencil, note: "Details & hospital transfer" },
+    ...(rights.manage ? [{ id: "account" as ProfileTab, label: "Account", icon: Power, note: accountOff ? "Deactivated" : "Can sign in" }, { id: "edit" as ProfileTab, label: "Edit profile", icon: Pencil, note: "Details & hospital transfer" }] : []),
   ];
 
   return createPortal(
@@ -628,6 +649,7 @@ function AgentProfile({ agent, directory, onClose }: { agent: AgentRecord; direc
                 {agent.source === "user" && <em>Added in app</em>}
                 {edit && <em>Edited</em>}
                 {transferred && <em>Transferred</em>}
+                {accountOff && <em>Account off</em>}
               </span>
             </div>
 
@@ -669,6 +691,7 @@ function AgentProfile({ agent, directory, onClose }: { agent: AgentRecord; direc
                 </div>
                 <p>{transferred ? `Transferred from ${recordedKey || "no hospital"} (as recorded).` : first ? `First referral on ${formatShortDate(first.at)} ${first.at.getFullYear()}.` : "No referrals recorded yet."}</p>
               </div>
+              {rights.money && (
               <div className="fd-preview">
                 <span className="fd-preview-title">Payment account</span>
                 <div className="fd-preview-row">
@@ -689,12 +712,13 @@ function AgentProfile({ agent, directory, onClose }: { agent: AgentRecord; direc
                     {pct(rateFor(agent.id))} · {agentRate(agent.id) !== undefined ? "own rate" : "company rate"}
                   </code>
                 </div>
-                {!agent.bank && (
+                {!agent.bank && rights.manage && (
                   <button type="button" className="ap-addbank" onClick={() => setTab("edit")}>
                     <Plus size={14} /> Add bank details
                   </button>
                 )}
               </div>
+              )}
             </div>
           </aside>
 
@@ -703,10 +727,14 @@ function AgentProfile({ agent, directory, onClose }: { agent: AgentRecord; direc
             <header className="fd-head">
               <div>
                 <span className="fd-eyebrow">PR agent profile · {key || "No hospital"}</span>
-                <h2 id={titleId}>{tab === "edit" ? `Edit ${agent.name}` : tab === "patients" ? "Referred patients" : agent.name}</h2>
+                <h2 id={titleId}>{tab === "edit" ? `Edit ${agent.name}` : tab === "patients" ? "Referred patients" : tab === "account" ? "Account" : agent.name}</h2>
                 <p>
-                  {tab === "edit"
+                  {tab === "account"
+                    ? "Turn this agent's sign-in off or back on. Their referrals, history and figures are kept."
+                    : tab === "edit"
                     ? "Update contact details or transfer this agent to another hospital. The legacy record is never overwritten."
+                    : !rights.money
+                    ? "Referrals and the value of the tests come from the bills of the patients this agent referred. Select a patient to see their tests."
                     : "Commission and revenue come from the bills of the patients this agent referred. Select a patient to see their tests."}
                 </p>
               </div>
@@ -716,7 +744,8 @@ function AgentProfile({ agent, directory, onClose }: { agent: AgentRecord; direc
             </header>
 
             <div className="fd-body thin-scroll">
-              {tab !== "edit" && (
+              {tab === "account" && rights.manage && <AccountAccessPanel accountKey={agentKey(agent.id)} name={agent.name} what="a PR agent" branchId={LEGACY_BRANCH_ID} />}
+              {tab !== "edit" && tab !== "account" && (
                 <>
                   {tab === "overview" && (
                     <section className="fd-section">
@@ -725,10 +754,10 @@ function AgentProfile({ agent, directory, onClose }: { agent: AgentRecord; direc
                       </h3>
                       <SummaryChips
                         items={[
-                          { label: "Commission · this month", icon: Percent, value: money(month.commission), caption: `So far · ${formatCount(month.patients)} referrals` },
+                          rights.money ? { label: "Commission · this month", icon: Percent, value: money(month.commission), caption: `So far · ${formatCount(month.patients)} referrals` } : { label: "Patients · this month", icon: Users, value: formatCount(month.patients), caption: `${money(month.revenue, true)} in tests` },
                           { label: "Revenue · all time", icon: Banknote, value: money(all.revenue), caption: "Since records began (1 Jan)" },
-                          { label: "Patients · all time", icon: Users, value: formatCount(all.patients), caption: `${money(all.commission, true)} commission overall` },
-                          { label: "Today", icon: TrendingUp, value: formatCount(today.patients), caption: `${money(today.revenue, true)} · ${money(today.commission, true)} commission` },
+                          { label: "Patients · all time", icon: Users, value: formatCount(all.patients), caption: rights.money ? `${money(all.commission, true)} commission overall` : "Since records began" },
+                          { label: "Today", icon: TrendingUp, value: formatCount(today.patients), caption: rights.money ? `${money(today.revenue, true)} · ${money(today.commission, true)} commission` : `${money(today.revenue, true)} in tests` },
                         ]}
                       />
                     </section>
@@ -736,7 +765,7 @@ function AgentProfile({ agent, directory, onClose }: { agent: AgentRecord; direc
 
                   <section className="fd-section">
                     <h3 className="fd-section-title">
-                      <span>Commission & referrals by period</span>
+                      <span>{rights.money ? "Commission & referrals" : "Referrals"} by period</span>
                     </h3>
                     <div className="ap-filter">
                       <Segmented label="Profile period" value={period === "day" ? ("custom" as Exclude<ProfilePeriod, "day">) : period} onChange={(v) => setPeriod(v)} options={PROFILE_PERIODS} />
@@ -757,10 +786,12 @@ function AgentProfile({ agent, directory, onClose }: { agent: AgentRecord; direc
                       </label>
                     </div>
                     <dl className="ap-period">
-                      <div>
-                        <dt>Commission · {periodName}</dt>
-                        <dd className="num">{money(sel.commission)}</dd>
-                      </div>
+                      {rights.money && (
+                        <div>
+                          <dt>Commission · {periodName}</dt>
+                          <dd className="num">{money(sel.commission)}</dd>
+                        </div>
+                      )}
                       <div>
                         <dt>Revenue generated</dt>
                         <dd className="num">{money(sel.revenue)}</dd>
@@ -780,7 +811,7 @@ function AgentProfile({ agent, directory, onClose }: { agent: AgentRecord; direc
                     <h3 className="fd-section-title">
                       <span>Referred patients · {periodName}</span>
                     </h3>
-                    <ReferredPatients visits={selected} onOpen={setViewing} />
+                    <ReferredPatients visits={selected} onOpen={setViewing} money={rights.money} />
                   </section>
                 </>
               )}
@@ -791,10 +822,12 @@ function AgentProfile({ agent, directory, onClose }: { agent: AgentRecord; direc
             <footer className="fd-foot">
               {tab === "edit" ? (
                 <span className="left">Changes last for this session until the database is connected.</span>
+              ) : !rights.money ? (
+                <span className="left">PR agent #{agent.id} · {key || "No hospital"}</span>
               ) : (
                 <span className="left">Commission at {pct(rateFor(agent.id))} ({agentRate(agent.id) !== undefined ? "this agent's own rate" : "company rate"}). Change it under Edit profile.</span>
               )}
-              {edit && tab !== "edit" && (
+              {edit && tab !== "edit" && rights.manage && (
                 <Button
                   variant="ghost"
                   onClick={() => {
@@ -805,7 +838,7 @@ function AgentProfile({ agent, directory, onClose }: { agent: AgentRecord; direc
                   <RotateCcw size={15} /> Restore recorded details
                 </Button>
               )}
-              {agent.source === "user" && (
+              {agent.source === "user" && rights.manage && (
                 <Button variant="ghost" className="st-trash" onClick={() => setTrashOpen(true)}>
                   <Trash2 size={15} /> Move to trash
                 </Button>
@@ -813,7 +846,7 @@ function AgentProfile({ agent, directory, onClose }: { agent: AgentRecord; direc
               <Button variant="secondary" onClick={onClose}>
                 Close
               </Button>
-              {tab !== "edit" && (
+              {tab !== "edit" && rights.manage && (
                 <Button onClick={() => setTab("edit")}>
                   <Pencil size={16} /> Edit profile
                 </Button>
@@ -841,7 +874,7 @@ function AgentProfile({ agent, directory, onClose }: { agent: AgentRecord; direc
   );
 }
 
-function ReferredPatients({ visits, onOpen }: { visits: PatientVisit[]; onOpen: (v: PatientVisit) => void }) {
+function ReferredPatients({ visits, onOpen, money: seesMoney = true }: { visits: PatientVisit[]; onOpen: (v: PatientVisit) => void; money?: boolean }) {
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -873,14 +906,14 @@ function ReferredPatients({ visits, onOpen }: { visits: PatientVisit[]; onOpen: 
               <th>Patient</th>
               <th>Tests</th>
               <th className="right">Billed</th>
-              <th className="right">Commission</th>
+              {seesMoney && <th className="right">Commission</th>}
               <th>Payment</th>
             </tr>
           </thead>
           <tbody>
             {visible.length === 0 ? (
               <tr>
-                <td colSpan={6}>
+                <td colSpan={seesMoney ? 6 : 5}>
                   <EmptyState title={term ? `No patients match “${q}”` : "No referred patients in this period"} />
                 </td>
               </tr>
@@ -906,7 +939,7 @@ function ReferredPatients({ visits, onOpen }: { visits: PatientVisit[]; onOpen: 
                   <td className="right num ep-nowrap">
                     <strong>{money(v.billed)}</strong>
                   </td>
-                  <td className="right num ep-nowrap">{money(v.billed * rateFor(v.agentId ?? 0))}</td>
+                  {seesMoney && <td className="right num ep-nowrap">{money(v.billed * rateFor(v.agentId ?? 0))}</td>}
                   <td>
                     <Badge tone={v.payment === "Paid" ? "ok" : v.payment === "Part-paid" ? "warn" : "danger"} dot>
                       {v.payment}
