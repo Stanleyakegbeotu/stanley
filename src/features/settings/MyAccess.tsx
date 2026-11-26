@@ -13,7 +13,7 @@ import type { AppUser } from "@/data/company";
 import type { Branch } from "@/data/types";
 import { MANAGER_ROLE, STAFF_ROLES } from "@/data/userRecords";
 import { useAuditLog } from "@/services/audit";
-import { PERMISSION_GROUPS, can, usePermissions } from "@/services/permissions";
+import { PERMISSION_GROUPS, can, grantable, usePermissions } from "@/services/permissions";
 import { Badge } from "@/shared/ui/controls";
 import { BRANCH_NAV_ITEMS, canOpenBranchPage } from "@/shell/navigation";
 import { maxDaysFor, reportsFor } from "@/features/reports/access";
@@ -67,7 +67,7 @@ export function MyRoleView({ user, branch }: { user: AppUser; branch: Branch }) 
           <div>
             <dt>Permissions</dt>
             <dd>
-              {granted} of {all.filter((p) => !p.adminOnly).length}
+              {granted} of {all.filter((p) => grantable(user.role, p.id)).length}
             </dd>
           </div>
         </dl>
@@ -107,10 +107,11 @@ export function MyRoleView({ user, branch }: { user: AppUser; branch: Branch }) 
               <ul>
                 {g.perms.map((p) => {
                   const on = can(user.role, p.id);
+                  const locked = !grantable(user.role, p.id);
                   return (
-                    <li key={p.id} className={on ? "is-on" : p.adminOnly ? "is-admin" : "is-off"}>
+                    <li key={p.id} className={on ? "is-on" : locked ? "is-admin" : "is-off"}>
                       <span className="ma-mark" aria-hidden="true">
-                        {on ? <Check size={13} /> : p.adminOnly ? <Lock size={12} /> : <Minus size={13} />}
+                        {on ? <Check size={13} /> : locked ? <Lock size={12} /> : <Minus size={13} />}
                       </span>
                       <span className="ma-perm">
                         <b>
@@ -119,7 +120,7 @@ export function MyRoleView({ user, branch }: { user: AppUser; branch: Branch }) 
                         </b>
                         <small>{p.description}</small>
                       </span>
-                      <span className="ma-state">{on ? "Allowed" : p.adminOnly ? "Company Admin only" : "Not allowed"}</span>
+                      <span className="ma-state">{on ? "Allowed" : p.adminOnly ? "Company Admin only" : locked ? "Managers only" : "Not allowed"}</span>
                     </li>
                   );
                 })}
