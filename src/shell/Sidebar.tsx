@@ -15,6 +15,7 @@ import { COMPANY_NAV, branchNav } from "./navigation";
 import { usePermissions } from "@/services/permissions";
 import { StanleyOrb } from "@/features/assistant/StanleyOrb";
 import { useBranches } from "@/services/org";
+import { useNavCounts } from "./navCounts";
 
 type Tip = { label: string; top: number; left: number } | null;
 
@@ -25,6 +26,7 @@ type Tip = { label: string; top: number; left: number } | null;
 export function Sidebar() {
   const { collapsed, setCollapsed, route, navigate, context, user } = useApp();
   const { unread } = useConversations();
+  const counts = useNavCounts(branchRoute(route)?.branchId ?? null);
   // Re-render when the Company Admin changes permissions or branches.
   usePermissions();
   useBranches();
@@ -128,6 +130,11 @@ export function Sidebar() {
                       )}
                       <span className="sb-label sb-fade">{item.label}</span>
                       {item.id === "messages" && unread > 0 && <span className="sb-count">{unread > 99 ? "99+" : unread}</span>}
+                      {(counts[item.id]?.n ?? 0) > 0 && (
+                        <span className={`sb-count is-${item.id}`} title={counts[item.id]!.label} aria-label={counts[item.id]!.label}>
+                          {counts[item.id]!.n > 99 ? "99+" : counts[item.id]!.n}
+                        </span>
+                      )}
                     </button>
                   </li>
                 );

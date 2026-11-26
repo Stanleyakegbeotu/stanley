@@ -12,12 +12,12 @@
  * front desk; one about the manager reaches the admin only. Each report has
  * a priority (Critical, High, Normal); open and critical ones come first.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, CircleDot, Flag, Hash, MessagesSquare, Plus, RotateCcw, Send, Siren } from "lucide-react";
 import { useApp } from "@/app/AppState";
 import { ACTIVE_BRANCHES, getBranch } from "@/data/company";
 import { logAudit } from "@/services/audit";
-import { ABOUT, PRIORITY_TEXT, REPORT_CATEGORIES, STATUS_TEXT, TO_TEXT, addReport, addReportNote, byAttention, setReportPriority, setReportStatus, useIssueReports, visibleReports, type AboutKind, type IssueReport, type ReportCategory, type ReportPriority, type ReportStatus } from "@/services/issueReports";
+import { ABOUT, PRIORITY_TEXT, REPORT_CATEGORIES, STATUS_TEXT, TO_TEXT, addReport, addReportNote, byAttention, isNewFor, markReportRead, readerId, setReportPriority, setReportStatus, useIssueReports, visibleReports, type AboutKind, type IssueReport, type ReportCategory, type ReportPriority, type ReportStatus } from "@/services/issueReports";
 import { lastMonths, monthLabel } from "@/services/payoutMonths";
 import { formatCount } from "@/shared/format";
 import { AnimatedPage } from "@/shared/motion";
@@ -68,6 +68,11 @@ export function IssueReportsPage({ branchId }: { branchId: string | null }) {
   const visible = rows.slice((safe - 1) * size, safe * size);
   const open = openId ? (mine.find((r) => r.id === openId) ?? null) : null;
   const count = (s: ReportStatus) => mine.filter((r) => r.status === s).length;
+  const me = readerId(user);
+  const fresh = mine.filter((r) => isNewFor(r, me)).length;
+  useEffect(() => {
+    if (openId) markReportRead(openId, me);
+  }, [openId, me]);
   const scopeLabel = branchId ? `${getBranch(branchId)?.name ?? ""} branch` : scope ? `${getBranch(scope[0]!)?.name ?? ""} branch` : "All branches";
   const reset = () => setPage(1);
 
@@ -101,6 +106,11 @@ export function IssueReportsPage({ branchId }: { branchId: string | null }) {
       </p>
 
       <div className="inv-toolbar al-toolbar ir-toolbar">
+        {fresh > 0 && (
+          <span className="ir-fresh" title="Reports you haven't opened yet are highlighted">
+            <span className="ir-new-dot" /> {formatCount(fresh)} new for you
+          </span>
+        )}
         <SearchInput placeholder="Search report, person, referral ID or details" value={q} onChange={(v) => (setQ(v), reset())} />
         <Segmented
           label="Status"
@@ -167,7 +177,7 @@ export function IssueReportsPage({ branchId }: { branchId: string | null }) {
                 </tr>
               ) : (
                 visible.map((r) => (
-                  <tr key={r.id} className="pr-row" tabIndex={0} onClick={() => setOpenId(r.id)} onKeyDown={(k) => (k.key === "Enter" || k.key === " ") && (k.preventDefault(), setOpenId(r.id))}>
+                  <tr key={r.id} className={`pr-row ${isNewFor(r, me) ? "ir-new" : ""}`} tabIndex={0} onClick={() => setOpenId(r.id)} onKeyDown={(k) => (k.key === "Enter" || k.key === " ") && (k.preventDefault(), setOpenId(r.id))}>
                     <td className="al-when">
                       <b>{isToday(r.at) ? "Today" : new Date(r.at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</b>
                       <small>
@@ -184,7 +194,10 @@ export function IssueReportsPage({ branchId }: { branchId: string | null }) {
                       <small className="ep-sub">{r.from.role}</small>
                     </td>
                     <td className="ir-subject">
-                      <strong>{r.subject}</strong>
+                      <strong>
+                        {isNewFor(r, me) && <span className="ir-new-dot" title="New: you haven't opened this report" />}
+                        {r.subject}
+                      </strong>
                       <small className="ep-sub">
                         {r.category}
                         {r.month ? ` · ${monthLabel(r.month)}` : ""}

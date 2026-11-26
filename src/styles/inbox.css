@@ -1679,3 +1679,14 @@
 .am-paid-tick {
   color: var(--ok);
 }
+
+/* Sidebar counts: referrals waiting to be billed, saved drafts, new reports */
+.sb-item .sb-count.is-billing { background: #f2a93b; color: #3a2200; }
+.sb-item .sb-count.is-drafts { background: color-mix(in srgb, currentColor 24%, transparent); color: inherit; }
+
+/* Reports this person hasn't opened yet */
+.ir-new-dot { display: inline-block; width: 8px; height: 8px; margin-right: 7px; border-radius: 50%; background: var(--danger); vertical-align: 1px; box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 18%, transparent); }
+.pr-row.ir-new > td { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.pr-row.ir-new > td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.pr-row.ir-new .ir-subject strong { font-weight: 800; }
+.ir-fresh { display: inline-flex; align-items: center; gap: 2px; height: 34px; padding: 0 12px; border-radius: 999px; background: color-mix(in srgb, var(--danger) 9%, transparent); color: var(--danger); font-size: 12.5px; font-weight: 700; white-space: nowrap; }
