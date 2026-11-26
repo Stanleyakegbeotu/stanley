@@ -223,6 +223,12 @@ export function suggestSplit(hospitals: HospitalInfo[], marketerIds: string[], r
   }
   return [...moves.values()].sort((a, b) => b.agents - a.agents);
 }
+/** Until the database is connected: a branch with marketers but no owners at all gets a first fair split once (marked as a sample in the history). */
+export function seedOwners(branchId: string, hospitals: HospitalInfo[], marketerIds: string[]) {
+  const st = current();
+  if (!marketerIds.length || !hospitals.length || Object.keys(st.owners[branchId] ?? {}).length || st.ownerHistory.some((h) => h.branchId === branchId)) return;
+  applyMoves(branchId, suggestSplit(hospitals, marketerIds, false), "STANLEY", "Sample split (until the manager sets it)");
+}
 export function applyMoves(branchId: string, moves: Move[], by: string, reason: string) {
   for (const m of moves) setHospitalOwner(branchId, m.hospital, m.to, by, reason);
 }
