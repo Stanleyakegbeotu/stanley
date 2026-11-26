@@ -1105,3 +1105,33 @@
   width: 24px;
   height: 24px;
 }
+
+/* Full page, no card (owner, 2026-11-26), like the Inbox: STANLEY AI and Report an issue fill the page. */
+.ai-workspace {
+  height: calc(100vh - var(--topbar-h) - 28px);
+  margin: -28px -30px -72px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.ai-workspace .ai-body {
+  padding: 20px 28px 22px;
+}
+.ai-workspace .ai-body {
+  padding: 0;
+  gap: 0;
+}
+.ai-workspace .ai-chat {
+  border: 0;
+  border-radius: 0;
+  border-right: 1px solid var(--line);
+}
+.ai-workspace .ai-scroll {
+  padding: 28px 40px 16px;
+}
+.ai-workspace .ai-composer {
+  padding: 14px 40px;
+}
+.ai-workspace .ai-activity {
+  margin: 16px;
+}
