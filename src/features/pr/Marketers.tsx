@@ -57,7 +57,9 @@ export function MarketersSection({ branchId }: { branchId: string }) {
   const figs = useMemo(() => hospitalFigures(branchId, monthRange(ym), agents), [branchId, ym, agents]);
   const nameOf = (id: string | null) => marketers.find((m) => m.id === id)?.name ?? "No marketer";
   if (branchId !== LEGACY_BRANCH_ID && !marketers.length) return null;
-  const totals = progress.reduce((s, p) => ({ patients: s.patients + p.patients, target: s.target + p.target }), { patients: 0, target: 0 });
+  const totals = progress.reduce((s, p) => ({ patients: s.patients + p.patients, revenue: s.revenue + p.revenue, target: s.target + p.target }), { patients: 0, revenue: 0, target: 0 });
+  const cur = getBranch(branchId)?.currency ?? "NGN";
+  const money = (n: number) => formatMoney(n, cur, true);
   const shown = hq === "none" ? unowned : hospitals;
   const months = [0, -1, -2, -3, -4, -5].map((n) => shiftMonth(monthKey(), n));
 
@@ -84,9 +86,9 @@ export function MarketersSection({ branchId }: { branchId: string }) {
         <>
           <div className="mk-kpis">
             <div>
-              <small>Patients from partner hospitals</small>
-              <b className="num">{formatCount(totals.patients)}</b>
-              <span>of {formatCount(totals.target)} targeted · {monthName(ym, true)}</span>
+              <small>Amount from partner hospitals</small>
+              <b className="num">{money(totals.revenue)}</b>
+              <span>of {money(totals.target)} targeted · {formatCount(totals.patients)} patients</span>
             </div>
             <div>
               <small>Marketers</small>
@@ -112,8 +114,8 @@ export function MarketersSection({ branchId }: { branchId: string }) {
                   <tr>
                     <th>Marketer</th>
                     <th className="num">Hospitals</th>
-                    <th className="num">PR agents</th>
-                    <th>Patients against target</th>
+                    <th className="num">Patients</th>
+                    <th>Amount against target</th>
                     <th className="num" title="The same days of last month">Last month</th>
                     <th className="num">Follow-ups</th>
                     <th>Pace</th>
@@ -126,7 +128,7 @@ export function MarketersSection({ branchId }: { branchId: string }) {
                     .map((p, i) => {
                       const m = marketers.find((x) => x.id === p.marketerId)!;
                       const pw = paceWord(p);
-                      const diff = p.patients - p.lastMonthSoFar;
+                      const diff = p.revenue - p.lastMonthSoFarRevenue;
                       return (
                         <tr key={p.marketerId} className="pr-row" tabIndex={0} onClick={() => setViewing(p.marketerId)} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), setViewing(p.marketerId))}>
                           <td>
@@ -140,15 +142,18 @@ export function MarketersSection({ branchId }: { branchId: string }) {
                             </span>
                           </td>
                           <td className="num">{formatCount(p.hospitals.length)}</td>
-                          <td className="num">{formatCount(p.agents)}</td>
+                          <td className="num">
+                            {formatCount(p.patients)}
+                            <small className="ep-sub">{formatCount(p.agents)} agents</small>
+                          </td>
                           <td>
-                            <TargetBar p={p} />
+                            <TargetBar p={p} money={money} />
                           </td>
                           <td className="num">
-                            {formatCount(p.lastMonthSoFar)}
+                            {money(p.lastMonthSoFarRevenue)}
                             <small className={`ep-sub ${diff < 0 ? "am-down" : diff > 0 ? "am-up" : ""}`}>
                               {diff > 0 ? <ArrowUpRight size={12} /> : diff < 0 ? <ArrowDownRight size={12} /> : null}
-                              {diff === 0 ? "Same" : `${diff > 0 ? "+" : ""}${formatCount(diff)}`}
+                              {diff === 0 ? "Same" : `${diff > 0 ? "+" : "−"}${money(Math.abs(diff))}`}
                             </small>
                           </td>
                           <td className="num">
@@ -308,12 +313,12 @@ export function MarketersSection({ branchId }: { branchId: string }) {
   );
 }
 
-function TargetBar({ p }: { p: Progress }) {
+function TargetBar({ p, money }: { p: Progress; money: (n: number) => string }) {
   const pct = Math.min(1, p.pct);
   return (
     <span className="mk-bar" title={`${Math.round(p.pct * 100)}% of the target · even pace by today: ${Math.round(p.pace * 100)}%`}>
       <span className="mk-bar-text">
-        <b className="num">{formatCount(p.patients)}</b> / {formatCount(p.target)}
+        <b className="num">{money(p.revenue)}</b> / {money(p.target)}
         <em>{Math.round(p.pct * 100)}%</em>
       </span>
       <span className="mk-bar-track">
@@ -333,6 +338,7 @@ function MarketerDialog({ branchId, marketerId, ym, onClose }: { branchId: strin
   const m = staff.find((s) => s.id === marketerId);
   const p = progress.find((x) => x.marketerId === marketerId);
   const [target, setTargetText] = useState(String(p?.target ?? ""));
+  const money = (n: number) => formatMoney(n, getBranch(branchId)?.currency ?? "NGN", true);
   const history = useMemo(() => [0, -1, -2, -3, -4, -5].map((n) => progressFor(st, branchId, marketerId, hospitals, agents, checkUps, shiftMonth(ym, n))).reverse(), [st, branchId, marketerId, hospitals, agents, checkUps, ym]);
   const figs = useMemo(() => hospitalFigures(branchId, monthRange(ym), agents), [branchId, ym, agents]);
   if (!m || !p) return null;
@@ -344,7 +350,7 @@ function MarketerDialog({ branchId, marketerId, ym, onClose }: { branchId: strin
   ]
     .sort((a, b) => b.at.localeCompare(a.at))
     .slice(0, 30);
-  const max = Math.max(...history.map((h) => Math.max(h.patients, h.target)), 1);
+  const max = Math.max(...history.map((h) => Math.max(h.revenue, h.target)), 1);
   const pw = paceWord(p);
   const cur = getBranch(branchId)?.currency ?? "NGN";
   return (
@@ -364,23 +370,23 @@ function MarketerDialog({ branchId, marketerId, ym, onClose }: { branchId: strin
       <div className="mk-detail">
         <div className="mk-kpis is-4">
           <div>
-            <small>Patients against target</small>
+            <small>Amount against target</small>
             <b className="num">
-              {formatCount(p.patients)} <span>/ {formatCount(p.target)}</span>
+              {money(p.revenue)} <span>/ {money(p.target)}</span>
             </b>
             <Badge tone={pw.tone} dot>
               {pw.text}
             </Badge>
           </div>
           <div>
-            <small>Amount their hospitals generated</small>
-            <b className="num">{formatMoney(p.revenue, cur, true)}</b>
-            <span>{formatCount(p.referring)} PR agents sent patients</span>
+            <small>Patients who attended</small>
+            <b className="num">{formatCount(p.patients)}</b>
+            <span>{formatCount(p.referring)} PR agents sent patients · this week {money(p.week.revenue)} of {money(p.week.target)}</span>
           </div>
           <div>
             <small>Usual month (last 3)</small>
-            <b className="num">{formatCount(p.baseline)}</b>
-            <span>{p.patients >= p.lastMonthSoFar ? "Up" : "Down"} on last month, same days ({formatCount(p.lastMonthSoFar)})</span>
+            <b className="num">{money(p.baseline)}</b>
+            <span>{p.revenue >= p.lastMonthSoFarRevenue ? "Up" : "Down"} on last month, same days ({money(p.lastMonthSoFarRevenue)})</span>
           </div>
           <div>
             <small>Their work this month</small>
@@ -398,21 +404,21 @@ function MarketerDialog({ branchId, marketerId, ym, onClose }: { branchId: strin
               {history.map((h) => (
                 <div key={h.month} className="mk-col">
                   <span className="mk-col-bars">
-                    <i className="is-target" style={{ height: `${(h.target / max) * 100}%` }} title={`Target ${h.target}`} />
-                    <i className={h.patients >= h.target ? "is-hit" : "is-got"} style={{ height: `${(h.patients / max) * 100}%` }} title={`${h.patients} patients`} />
+                    <i className="is-target" style={{ height: `${(h.target / max) * 100}%` }} title={`Target ${money(h.target)}`} />
+                    <i className={h.revenue >= h.target ? "is-hit" : "is-got"} style={{ height: `${(h.revenue / max) * 100}%` }} title={`${money(h.revenue)} · ${h.patients} patients`} />
                   </span>
                   <small>{monthName(h.month).split(" ")[0]}</small>
-                  <em className={h.patients >= h.target ? "is-hit" : ""}>{Math.round(h.pct * 100)}%</em>
+                  <em className={h.revenue >= h.target ? "is-hit" : ""}>{Math.round(h.pct * 100)}%</em>
                 </div>
               ))}
             </div>
             <p className="mk-legend">
-              <i className="is-got" /> Patients <i className="is-target" /> Target. Their improvement, or lack of it, shows here and on their phone.
+              <i className="is-got" /> Amount generated <i className="is-target" /> Target. Their improvement, or lack of it, shows here and on their phone.
             </p>
             {canManage && (
               <div className="mk-target">
                 <label className="field">
-                  Target for {monthName(ym, true)} (patients)
+                  Target for {monthName(ym, true)} (₦, amount their hospitals generate)
                   <input inputMode="numeric" value={target} onChange={(e) => setTargetText(e.target.value.replace(/\D/g, ""))} />
                 </label>
                 <Button
@@ -420,8 +426,8 @@ function MarketerDialog({ branchId, marketerId, ym, onClose }: { branchId: strin
                   disabled={!Number(target) || Number(target) === p.target}
                   onClick={() => {
                     setTarget(branchId, marketerId, ym, Number(target), user.name);
-                    logAudit({ category: "PR agents", action: "Marketer target set", record: `${m.name} · ${monthName(ym, true)}`, details: `${target} patients (usual month ${p.baseline})`, branchId });
-                    showToast(`Target set: ${target} patients`);
+                    logAudit({ category: "PR agents", action: "Marketer target set", record: `${m.name} · ${monthName(ym, true)}`, details: `${money(Number(target))} (usual month ${money(p.baseline)})`, branchId });
+                    showToast(`Target set: ${money(Number(target))}`);
                   }}
                 >
                   <Target size={15} /> Set target
