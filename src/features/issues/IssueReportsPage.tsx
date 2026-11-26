@@ -7,15 +7,18 @@
  * Anyone can send a report from here too.
  *
  * Company Admin: "/reports" (every branch, or the chosen one). Branch:
- * "/branch/<id>/reports" (the manager sees reports to the manager and the
- * front desk; the front desk sees reports to the front desk).
+ * "/branch/<id>/reports". Who sees a report depends on what it is about: a
+ * report about the front desk reaches the manager and the admin, never the
+ * front desk; one about the manager reaches the admin only. Each report has
+ * a priority (Critical, High, Normal); open and critical ones come first.
  */
 import { useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, CircleDot, Flag, Hash, MessagesSquare, Plus, RotateCcw, Send, Siren } from "lucide-react";
 import { useApp } from "@/app/AppState";
 import { ACTIVE_BRANCHES, getBranch } from "@/data/company";
 import { logAudit } from "@/services/audit";
-import { REPORT_CATEGORIES, STATUS_TEXT, TO_TEXT, addReport, addReportNote, setReportStatus, useIssueReports, visibleReports, type IssueReport, type ReportCategory, type ReportStatus, type ReportTo } from "@/services/issueReports";
+import { ABOUT, PRIORITY_TEXT, REPORT_CATEGORIES, STATUS_TEXT, TO_TEXT, addReport, addReportNote, byAttention, setReportPriority, setReportStatus, useIssueReports, visibleReports, type AboutKind, type IssueReport, type ReportCategory, type ReportPriority, type ReportStatus } from "@/services/issueReports";
+import { lastMonths, monthLabel } from "@/services/payoutMonths";
 import { formatCount } from "@/shared/format";
 import { AnimatedPage } from "@/shared/motion";
 import { Badge, Button, EmptyState, SearchInput, Segmented, SelectMenu, type Tone } from "@/shared/ui/controls";
@@ -25,6 +28,7 @@ import { FieldError } from "@/shared/ui/FieldError";
 import { PageHero } from "@/features/shared/PageHero";
 
 const STATUS_TONE: Record<ReportStatus, Tone> = { new: "warn", attended: "info", resolved: "ok" };
+const PRIORITY_TONE: Record<ReportPriority, Tone> = { critical: "danger", high: "warn", normal: "neutral" };
 const DAY = 86_400_000;
 const stamp = (iso: string) => {
   const d = new Date(iso);
@@ -44,6 +48,7 @@ export function IssueReportsPage({ branchId }: { branchId: string | null }) {
   const [status, setStatus] = useState<ReportStatus | "all">("all");
   const [when, setWhen] = useState<When>("all");
   const [cat, setCat] = useState<ReportCategory | "all">("all");
+  const [prio, setPrio] = useState<ReportPriority | "all">("all");
   const [page, setPage] = useState(1);
   const [size, setSize] = useState(25);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -54,9 +59,10 @@ export function IssueReportsPage({ branchId }: { branchId: string | null }) {
     (r) =>
       (status === "all" || r.status === status) &&
       (cat === "all" || r.category === cat) &&
+      (prio === "all" || r.priority === prio) &&
       new Date(r.at).getTime() >= since &&
       (!t || `${r.id} ${r.subject} ${r.details} ${r.from.name} ${r.about ?? ""} ${r.patientRef ?? ""} ${r.category} ${getBranch(r.branchId)?.name ?? ""}`.toLowerCase().includes(t)),
-  );
+  ).sort(byAttention);
   const pages = Math.max(1, Math.ceil(rows.length / size));
   const safe = Math.min(page, pages);
   const visible = rows.slice((safe - 1) * size, safe * size);
@@ -73,6 +79,7 @@ export function IssueReportsPage({ branchId }: { branchId: string | null }) {
         period={false}
         icon={Flag}
         strip={[
+          { label: "Critical open", value: formatCount(mine.filter((r) => r.priority === "critical" && r.status !== "resolved").length) },
           { label: "Today", value: formatCount(mine.filter((r) => isToday(r.at)).length) },
           { label: "New", value: formatCount(count("new")) },
           { label: "Attended", value: formatCount(count("attended")) },
@@ -89,8 +96,8 @@ export function IssueReportsPage({ branchId }: { branchId: string | null }) {
         {kind === "admin"
           ? "Every report from PR agents and staff, across the branches. Open one to see the details, attend to it and resolve it."
           : kind === "manager"
-            ? "Reports sent to you and to the front desk of this branch, from PR agents and staff."
-            : "Reports sent to the front desk, from PR agents and staff."}
+            ? "Reports about this branch that the Branch Manager handles, from PR agents and staff. Reports about you go to the Company Admin."
+            : "Reports the front desk handles (results, waiting, the building …). Reports about the front desk go to the Branch Manager and the Company Admin."}
       </p>
 
       <div className="inv-toolbar al-toolbar ir-toolbar">
@@ -118,12 +125,24 @@ export function IssueReportsPage({ branchId }: { branchId: string | null }) {
           ]}
         />
         <SelectMenu value={cat} ariaLabel="Type" className="select-btn inv-sort" options={[{ value: "all", label: "All types" }, ...REPORT_CATEGORIES.map((c) => ({ value: c, label: c }))]} onChange={(v) => (setCat(v as ReportCategory | "all"), reset())} />
+        <SelectMenu
+          value={prio}
+          ariaLabel="Priority"
+          className="select-btn inv-sort"
+          options={[
+            { value: "all", label: "Any priority" },
+            { value: "critical", label: "Critical" },
+            { value: "high", label: "High" },
+            { value: "normal", label: "Normal" },
+          ]}
+          onChange={(v) => (setPrio(v as ReportPriority | "all"), reset())}
+        />
       </div>
 
       <div className="card bp-card rf-table-card">
         <div className="inv-table-tools">
           <span className="inv-count">
-            {formatCount(rows.length)} of {formatCount(mine.length)} reports · newest first
+            {formatCount(rows.length)} of {formatCount(mine.length)} reports · open and critical first
           </span>
         </div>
         <div className="table-wrap thin-scroll">
@@ -131,6 +150,7 @@ export function IssueReportsPage({ branchId }: { branchId: string | null }) {
             <thead>
               <tr>
                 <th>Received</th>
+                <th>Priority</th>
                 <th>From</th>
                 <th>Report</th>
                 <th>Sent to</th>
@@ -141,7 +161,7 @@ export function IssueReportsPage({ branchId }: { branchId: string | null }) {
             <tbody>
               {visible.length === 0 ? (
                 <tr>
-                  <td colSpan={6}>
+                  <td colSpan={7}>
                     <EmptyState title={mine.length ? "No report matches these filters" : "No reports yet"}>Reports from PR agents and staff appear here.</EmptyState>
                   </td>
                 </tr>
@@ -155,20 +175,27 @@ export function IssueReportsPage({ branchId }: { branchId: string | null }) {
                       </small>
                     </td>
                     <td>
+                      <Badge tone={PRIORITY_TONE[r.priority]} dot={r.priority === "critical"}>
+                        {r.priority === "critical" && <Siren size={12} />} {PRIORITY_TEXT[r.priority]}
+                      </Badge>
+                    </td>
+                    <td>
                       <strong>{r.from.name}</strong>
                       <small className="ep-sub">{r.from.role}</small>
                     </td>
                     <td className="ir-subject">
-                      <strong>
-                        {r.urgent && <Siren size={14} className="ir-urgent" aria-label="Urgent" />} {r.subject}
-                      </strong>
+                      <strong>{r.subject}</strong>
                       <small className="ep-sub">
                         {r.category}
+                        {r.month ? ` · ${monthLabel(r.month)}` : ""}
                         {r.about ? ` · about ${r.about}` : ""}
                         {r.patientRef ? ` · ${r.patientRef}` : ""}
                       </small>
                     </td>
-                    <td>{TO_TEXT[r.to]}</td>
+                    <td>
+                      {TO_TEXT[r.to]}
+                      <small className="ep-sub">Seen by {r.seenBy.map((x) => TO_TEXT[x]).join(", ")}</small>
+                    </td>
                     {!branchId && <td>{getBranch(r.branchId)?.name ?? ""}</td>}
                     <td>
                       <Badge tone={STATUS_TONE[r.status]} dot>
@@ -197,7 +224,8 @@ function ReportDetail({ r, kind, onClose }: { r: IssueReport; kind: "admin" | "m
   const [note, setNote] = useState("");
   const [err, setErr] = useState<string | null>(null);
   // The person it was sent to acts on it (the admin can act on any; the manager also on the front desk's).
-  const canAct = kind === "admin" || (kind === "manager" && r.to !== "admin") || (kind === "staff" && r.to === "frontdesk");
+  // Whoever can see a report may act on it (the admin on any).
+  const canAct = kind === "admin" || r.seenBy.includes(kind === "manager" ? "manager" : "frontdesk");
   const branch = getBranch(r.branchId);
   const act = (s: ReportStatus) => {
     if (s === "resolved" && note.trim().length < 5) return setErr("Say what was done to resolve it.");
@@ -279,12 +307,36 @@ function ReportDetail({ r, kind, onClose }: { r: IssueReport; kind: "admin" | "m
               <b>{r.about}</b>
             </span>
           )}
-          {r.urgent && (
-            <span className="is-urgent">
-              <small>Priority</small>
+          <span className={r.priority === "critical" ? "is-urgent" : ""}>
+            <small>Priority</small>
+            {canAct ? (
+              <select
+                className="ir-prio"
+                value={r.priority}
+                aria-label="Priority"
+                onChange={(e) => {
+                  setReportPriority(r.id, e.target.value as ReportPriority, `${user.name}, ${user.role}`);
+                  showToast(`Priority set to ${PRIORITY_TEXT[e.target.value as ReportPriority]}`);
+                }}
+              >
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="normal">Normal</option>
+              </select>
+            ) : (
               <b>
-                <AlertTriangle size={14} /> Urgent
+                {r.priority === "critical" && <AlertTriangle size={14} />} {PRIORITY_TEXT[r.priority]}
               </b>
+            )}
+          </span>
+          <span>
+            <small>Seen by</small>
+            <b>{r.seenBy.map((x) => TO_TEXT[x]).join(", ")}</b>
+          </span>
+          {r.month && (
+            <span>
+              <small>Month</small>
+              <b>{monthLabel(r.month)}</b>
             </span>
           )}
         </div>
@@ -326,22 +378,27 @@ function ReportDetail({ r, kind, onClose }: { r: IssueReport; kind: "admin" | "m
 function NewReport({ branchId, kind, onClose, onSent }: { branchId: string | null; kind: "admin" | "manager" | "staff"; onClose: () => void; onSent: (id: string) => void }) {
   const { user, showToast } = useApp();
   const [branch, setBranch] = useState(branchId ?? ACTIVE_BRANCHES[0]?.id ?? "");
-  const toOptions: ReportTo[] = kind === "admin" ? ["manager", "frontdesk"] : kind === "manager" ? ["admin", "frontdesk"] : ["manager", "admin"];
-  const [to, setTo] = useState<ReportTo>(toOptions[0]!);
-  const [category, setCategory] = useState<ReportCategory>("Other");
+  // A front desk person can't report about the front desk to themselves; a manager can't route one about the manager.
+  const choices = ABOUT.filter((a) => !(kind === "manager" && a.kind === "manager"));
+  const [about, setAbout] = useState<AboutKind>(choices[0]!.kind);
   const [subject, setSubject] = useState("");
   const [details, setDetails] = useState("");
-  const [about, setAbout] = useState("");
+  const [aboutText, setAboutText] = useState("");
   const [ref, setRef] = useState("");
-  const [urgent, setUrgent] = useState(false);
+  const [priority, setPriority] = useState<ReportPriority>("normal");
+  const [month, setMonth] = useState(lastMonths(2)[1]!);
   const [tried, setTried] = useState(false);
+  const def = ABOUT.find((a) => a.kind === about)!;
   const errs = { subject: subject.trim().length < 5 ? "Give the report a short title." : null, details: details.trim().length < 10 ? "Describe what happened." : null };
   const send = () => {
     setTried(true);
     if (errs.subject || errs.details) return;
-    const r = addReport({ branchId: branch, from: { kind: "staff", name: user.name, role: user.role }, to, category, subject: subject.trim(), details: details.trim(), about: about.trim() || undefined, patientRef: ref.trim().toUpperCase() || undefined, urgent }, `${user.name}, ${user.role}`);
-    logAudit({ category: "Reports", action: "Report sent", record: `${r.id} · ${r.subject}`, details: `to ${TO_TEXT[to]} · ${category}`, branchId: branch });
-    showToast(`Report sent to the ${TO_TEXT[to]}`);
+    const r = addReport(
+      { branchId: branch, from: { kind: "staff", name: user.name, role: user.role }, to: def.to, aboutKind: about, priority, subject: subject.trim(), details: details.trim(), about: aboutText.trim() || undefined, patientRef: ref.trim().toUpperCase() || undefined, month: about === "payout" ? month : undefined },
+      `${user.name}, ${user.role}`,
+    );
+    logAudit({ category: "Reports", action: "Report sent", record: `${r.id} · ${r.subject}`, details: `${r.category} · ${PRIORITY_TEXT[priority]} · seen by ${r.seenBy.map((x) => TO_TEXT[x]).join(", ")}`, branchId: branch });
+    showToast("Report sent");
     onSent(r.id);
   };
   return (
@@ -351,7 +408,7 @@ function NewReport({ branchId, kind, onClose, onSent }: { branchId: string | nul
       icon={Send}
       wide
       title="Send a report"
-      description="A complaint or an issue that needs attention. The person you send it to sees it on their Reports page."
+      description="A complaint or an issue that needs attention. Who sees it depends on what it is about."
       footer={
         <>
           <button type="button" className="bl-btn" onClick={onClose}>
@@ -377,23 +434,36 @@ function NewReport({ branchId, kind, onClose, onSent }: { branchId: string | nul
           </label>
         )}
         <label className="field">
-          Send to
-          <select value={to} onChange={(e) => setTo(e.target.value as ReportTo)}>
-            {toOptions.map((o) => (
-              <option key={o} value={o}>
-                {TO_TEXT[o]}
+          What is it about?
+          <select value={about} onChange={(e) => setAbout(e.target.value as AboutKind)}>
+            {choices.map((a) => (
+              <option key={a.kind} value={a.kind}>
+                {a.label}
               </option>
             ))}
           </select>
         </label>
         <label className="field">
-          Type
-          <select value={category} onChange={(e) => setCategory(e.target.value as ReportCategory)}>
-            {REPORT_CATEGORIES.map((c) => (
-              <option key={c}>{c}</option>
-            ))}
+          Priority
+          <select value={priority} onChange={(e) => setPriority(e.target.value as ReportPriority)}>
+            <option value="normal">Normal</option>
+            <option value="high">High: needs attention today</option>
+            <option value="critical">Critical: needs attention now</option>
           </select>
         </label>
+        <p className="ir-route full">{def.hint}</p>
+        {about === "payout" && (
+          <label className="field">
+            Which month
+            <select value={month} onChange={(e) => setMonth(e.target.value)}>
+              {lastMonths(12).map((m) => (
+                <option key={m} value={m}>
+                  {monthLabel(m)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className={`field full ${tried && errs.subject ? "is-error" : ""}`}>
           Title
           <input value={subject} maxLength={120} onChange={(e) => setSubject(e.target.value)} placeholder="For example: Patient says she was spoken to rudely" />
@@ -405,8 +475,8 @@ function NewReport({ branchId, kind, onClose, onSent }: { branchId: string | nul
           {tried && <FieldError msg={errs.details} />}
         </label>
         <label className="field">
-          About (optional)
-          <input value={about} maxLength={80} onChange={(e) => setAbout(e.target.value)} placeholder="A person, the front desk, a test …" />
+          Name or detail (optional)
+          <input value={aboutText} maxLength={80} onChange={(e) => setAboutText(e.target.value)} placeholder="A person's name, a test …" />
         </label>
         <label className="field">
           <span>
@@ -414,11 +484,7 @@ function NewReport({ branchId, kind, onClose, onSent }: { branchId: string | nul
           </span>
           <input className="mono" value={ref} maxLength={20} onChange={(e) => setRef(e.target.value)} placeholder="ABJ-R000123" />
         </label>
-        <label className="ir-check full">
-          <input type="checkbox" checked={urgent} onChange={(e) => setUrgent(e.target.checked)} /> Urgent: it needs attention today
-        </label>
       </div>
     </Modal>
   );
 }
-

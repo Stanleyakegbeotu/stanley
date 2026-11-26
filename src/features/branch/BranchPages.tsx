@@ -28,6 +28,7 @@ import { PRView } from "@/features/shared/views";
 import { InventoryCatalog, type ServiceActivity } from "@/features/inventory/InventoryCatalog";
 import { PatientDirectory } from "@/features/patients/PatientDirectory";
 import { BillingDrafts } from "@/features/billing/BillingWorkspace";
+import { AgentMonitorSection, PayoutMonthsSection } from "@/features/pr/AgentMonitor";
 
 export function BranchRecordsPage({ branch }: { branch: Branch }) {
   const { route } = useApp();
@@ -131,6 +132,8 @@ export function BranchPrPage({ branch }: { branch: Branch }) {
           )
         }
       />
+      <AgentMonitorSection branchId={branch.id} />
+      <PayoutMonthsSection branchId={branch.id} />
       <PRView scope={[branch.id]} />
       {adding !== null && <AddAgentDialog key={adding} open onClose={() => setAdding(null)} hospitals={directory.map((h) => ({ key: h.key, count: h.agentCount, raw: h.rawVariants }))} />}
     </AnimatedPage>

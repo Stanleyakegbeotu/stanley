@@ -23,6 +23,7 @@ import { FinanceWorkspace, type LogType } from "@/features/finance/FinanceWorksp
 import { ReportsHome } from "@/features/reports/ReportsHome";
 import { AnalysisPanel } from "@/features/reports/AnalysisPanel";
 import { StaffBranchView } from "@/features/staff/StaffWorkspace";
+import { AgentMonitorSection, PayoutMonthsSection } from "@/features/pr/AgentMonitor";
 import { AuditLogView, TrashLogView } from "@/features/admin/AdminLogs";
 import { managerOf } from "@/data/userRecords";
 import { financeTotals } from "@/services/finance";
@@ -402,6 +403,8 @@ export function PRPage() {
               </span>
             </nav>
           )}
+          <AgentMonitorSection branchId={branch.id} />
+          <PayoutMonthsSection branchId={branch.id} />
           <PRView scope={[branch.id]} />
         </>
       )}
