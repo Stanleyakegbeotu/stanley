@@ -22,6 +22,8 @@ import { Modal } from "@/shared/ui/Modal";
 import { Footer, useFieldErrors } from "@/features/shared/createForms";
 import { NAME_INPUT_PROPS, nameChange } from "@/shared/nameCase";
 import { BranchProfileForm } from "../BranchForms";
+import { OpeningHoursEditor } from "../OpeningHoursEditor";
+import { DEFAULT_WEEK, mapLinkProblem, weekProblem, weekText, type WeekHours } from "@/services/openingHours";
 import { EMAIL_RE, PHONE_RE } from "../ProfileCard";
 import { useOrgFacts, type BranchFacts } from "./orgData";
 import { ConfirmDialog, Panel, StatusChip, Toggle, dateTime, shortDate } from "./ui";
@@ -151,7 +153,10 @@ export function NewBranchDialog({ open, onClose, onCreated }: { open: boolean; o
   const { user, showToast } = useApp();
   const cfg = useConfig();
   const [form, setForm] = useState<BranchInput>(blank);
-  const [hours, setHours] = useState("");
+  const [week, setWeek] = useState<WeekHours>(DEFAULT_WEEK);
+  const [mapLink, setMapLink] = useState("");
+  const mapErr = mapLinkProblem(mapLink);
+  const weekErr = weekProblem(week);
   const [payMode, setPayMode] = useState<"inherit" | "custom">("inherit");
   const [methods, setMethods] = useState<Record<PaymentMethod, boolean>>({ ...cfg.payments.enabled });
   const set = (k: keyof BranchInput) => (e: { target: { value: string } }) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -161,7 +166,7 @@ export function NewBranchDialog({ open, onClose, onCreated }: { open: boolean; o
   const phoneBad = filled(form.phone) && !PHONE_RE.test(form.phone.trim());
   const emailBad = filled(form.email) && !EMAIL_RE.test(form.email.trim());
   const steps = [
-    { id: "info", label: "Branch information", done: filled(form.name) && filled(form.city) && filled(form.address) },
+    { id: "info", label: "Branch information", done: filled(form.name) && filled(form.city) && filled(form.address) && !mapErr && !weekErr },
     { id: "code", label: "Branch code", done: !codeErr },
     { id: "contact", label: "Contact", done: !phoneBad && !emailBad && (filled(form.phone) || filled(form.email)) },
     { id: "config", label: "Configuration", done: payMode === "inherit" || Object.values(methods).some(Boolean) },
@@ -170,7 +175,7 @@ export function NewBranchDialog({ open, onClose, onCreated }: { open: boolean; o
   const save = () => {
     const b = addBranch(form, user.name);
     updateBranchContact(b.id, { address: form.address.trim(), phone: form.phone.trim() });
-    updateBranchProfile(b.id, { email: form.email.trim(), hours: hours.trim() });
+    updateBranchProfile(b.id, { email: form.email.trim(), mapLink: mapLink.trim(), week, hours: weekText(week) });
     if (payMode === "custom") setBranchPayments(b.id, methods, user.name);
     showToast(`${b.name} branch created — Pending setup until you activate it`);
     onCreated?.(b.id);
@@ -221,9 +226,13 @@ export function NewBranchDialog({ open, onClose, onCreated }: { open: boolean; o
         <FormField label="Country">
           <input value={form.country} onChange={set("country")} />
         </FormField>
-        <FormField label="Opening hours">
-          <input value={hours} onChange={(e) => setHours(e.target.value)} placeholder="e.g. Mon–Sat 7:30am – 8:00pm" />
+        <FormField label="Google Maps link" required error={v.show(!!mapErr, mapErr ?? "")} hint="In Google Maps, open the branch, tap Share, then Copy link. PR agents send it to patients." full>
+          <input type="url" inputMode="url" value={mapLink} onChange={(e) => setMapLink(e.target.value)} placeholder="https://maps.app.goo.gl/..." />
         </FormField>
+        <div className="field full">
+          <span>Opening hours</span>
+          <OpeningHoursEditor value={week} onChange={setWeek} error={v.show(!!weekErr, weekErr ?? "") || null} />
+        </div>
       </FormSection>
       <FormSection id="code" title="Branch code" note="Used in every Patient ID at this branch. It must be unique and can't change once patients have IDs.">
         <FormField label="Branch code (3 letters)" required error={v.show(!!codeErr, codeErr ?? "")} hint={code.length === 3 && !codeErr ? `Patient IDs: ${code}-R000001 (referred) · ${code}-W000001 (walk-in)` : "e.g. Abuja = ABJ, Lagos = LAG"}>

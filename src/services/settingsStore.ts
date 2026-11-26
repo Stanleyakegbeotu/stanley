@@ -15,6 +15,7 @@
  */
 import { useSyncExternalStore } from "react";
 import { COMPANY } from "@/data/company";
+import type { WeekHours } from "./openingHours";
 
 export interface CompanyProfile {
   name: string;
@@ -41,8 +42,13 @@ export interface CompanyProfile {
 
 export interface BranchProfile {
   email: string;
+  /** Opening hours in words (kept in step with `week`). */
   hours: string;
   notes: string;
+  /** Google Maps link to the branch (required): sent to patients by PR agents. */
+  mapLink?: string;
+  /** Opening hours per day, or 24/7 (owner, 2026-11-26). */
+  week?: WeekHours;
 }
 
 export interface PersonalProfile {
@@ -118,6 +124,7 @@ const subscribe = (l: () => void) => {
 export function useSettings(): SettingsState {
   return useSyncExternalStore(subscribe, () => state, () => state);
 }
+
 
 /* ── Company ── */
 export const useCompanyProfile = () => useSettings().company;

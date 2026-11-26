@@ -662,3 +662,62 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Opening hours editor (owner, 2026-11-26) */
+.oh-editor {
+  display: grid;
+  gap: 10px;
+}
+.oh-days {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-2, #f8fafc);
+}
+.oh-day {
+  display: grid;
+  grid-template-columns: 104px 150px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+}
+.oh-day b {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.oh-day.is-closed b {
+  color: var(--muted);
+}
+.oh-day select,
+.oh-day input[type="time"] {
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface, #fff);
+  font: inherit;
+  font-size: 13.5px;
+}
+.oh-times {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.oh-copy {
+  border: 0;
+  background: none;
+  color: var(--brand, #1f6fe8);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.oh-summary {
+  margin: 0;
+}
+.oh-editor.is-error .oh-days {
+  border-color: var(--danger, #d92d20);
+}
