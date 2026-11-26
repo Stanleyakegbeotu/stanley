@@ -12,12 +12,12 @@
  *    agents only see "Ended ✓" in their app; if one reports an issue with the
  *    month, it shows here and on the Reports page.
  */
-import { useMemo, useState } from "react";
-import { ArrowDownRight, ArrowRight, ArrowUpRight, CalendarCheck, CheckCircle2, ClipboardCheck, Flag, MapPinned, PhoneCall, RotateCcw, Siren, TrendingUp, UserRoundX, Users } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { ArrowDownRight, ArrowRight, ArrowUpRight, CalendarCheck, CheckCircle2, ChevronDown, ClipboardCheck, Flag, MapPinned, PhoneCall, RotateCcw, Siren, TrendingUp, UserRoundX, Users } from "lucide-react";
 import { useApp } from "@/app/AppState";
 import { branchRoute } from "@/app/router";
 import { getBranch } from "@/data/company";
-import { hasPhone } from "@/data/legacy";
+import { LEGACY_BRANCH_ID, hasPhone } from "@/data/legacy";
 import { isoDate } from "@/data/demo/generator";
 import { logAudit } from "@/services/audit";
 import { agentRanking, resolveRange } from "@/services/analytics";
@@ -26,9 +26,13 @@ import { ATTENTION, OUTCOMES, STATUS_HINT, STATUS_LABEL, addCheckUp, useAgentHea
 import { useIssueReports } from "@/services/issueReports";
 import { canMarkPaid, lastMonths, markPaid, monthLabel, paidMark, unmarkPaid, usePaidMarks } from "@/services/payoutMonths";
 import { formatCount, formatMoney } from "@/shared/format";
-import { Reveal } from "@/shared/motion";
 import { Badge, EmptyState, SearchInput, Segmented, SelectMenu, type Tone } from "@/shared/ui/controls";
 import { Modal } from "@/shared/ui/Modal";
+import { Pagination } from "@/shared/ui/Pagination";
+import { Popover } from "@/shared/ui/Popover";
+
+/** Rows a page (owner, 2026-11-26). */
+const PER_PAGE = 15;
 
 const TONE: Record<AgentStatus, Tone> = { top: "ok", rising: "ok", steady: "neutral", slipping: "danger", quiet: "warn", inactive: "warn", never: "neutral" };
 const when = (d: Date | null) => (d ? d.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "Never");
@@ -56,17 +60,20 @@ export function AgentMonitorSection({ branchId }: { branchId: string }) {
   const [status, setStatus] = useState<AgentStatus | "all">("all");
   const [q, setQ] = useState("");
   const [logging, setLogging] = useState<AgentHealth | null>(null);
-  const [shown, setShown] = useState(25);
+  const [page, setPage] = useState(1);
   const count = (s: AgentStatus) => list.filter((a) => a.status === s).length;
   const due = list.filter((a) => a.due);
   const t = q.trim().toLowerCase();
   const rows = (view === "all" ? list : due).filter((a) => (status === "all" || a.status === status) && (!t || `${a.agent.name} ${a.hospital} ${a.agent.phone}`.toLowerCase().includes(t)));
+  const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE));
+  const safe = Math.min(page, pages);
   const plan = useMemo(() => {
     const m = new Map<string, AgentHealth[]>();
     for (const a of due) m.set(a.hospital, [...(m.get(a.hospital) ?? []), a]);
     return [...m.entries()].sort((a, b) => b[1].length - a[1].length);
   }, [due]);
-  if (!list.length) return null;
+  const loading = !list.length;
+  if (loading && branchId !== LEGACY_BRANCH_ID) return null;
   const chips: { s: AgentStatus; icon: typeof Users }[] = [
     { s: "slipping", icon: ArrowDownRight },
     { s: "quiet", icon: PhoneCall },
@@ -77,20 +84,20 @@ export function AgentMonitorSection({ branchId }: { branchId: string }) {
   ];
 
   return (
-    <Reveal as="section" className="bd-sec am-sec">
+    <section className="bd-sec am-sec">
       <header className="bd-sec-head">
         <div>
           <span className="bd-eyebrow">Marketing</span>
           <h2>PR agent monitor</h2>
           <p>Who is sending patients, who is slipping and who has gone quiet, with what to do about each. Log every visit or call so the branch knows, and the agent's flag goes off.</p>
         </div>
-        <span className={`am-due ${due.length ? "" : "is-clear"}`}>
-          <Flag size={16} /> <b>{formatCount(due.length)}</b> to check up on
+        <span className={`am-due ${loading || due.length ? "" : "is-clear"}`}>
+          <Flag size={16} /> {loading ? "Working out who to check up on…" : <><b>{formatCount(due.length)}</b> to check up on</>}
         </span>
       </header>
       <div className="am-chips">
         {chips.map(({ s, icon: Icon }) => (
-          <button key={s} type="button" className={`am-chip is-${s} ${status === s ? "is-on" : ""}`} onClick={() => (setStatus(status === s ? "all" : s), setView(ATTENTION.includes(s) ? view : "all"))} title={STATUS_HINT[s]}>
+          <button key={s} type="button" className={`am-chip is-${s} ${status === s ? "is-on" : ""}`} onClick={() => (setStatus(status === s ? "all" : s), setView(ATTENTION.includes(s) ? view : "all"), setPage(1))} title={STATUS_HINT[s]}>
             <Icon size={16} />
             <span>
               <strong className="num">{formatCount(count(s))}</strong>
@@ -103,14 +110,14 @@ export function AgentMonitorSection({ branchId }: { branchId: string }) {
         <Segmented
           label="View"
           value={view}
-          onChange={(v) => (setView(v), setShown(25))}
+          onChange={(v) => (setView(v), setPage(1))}
           options={[
             { value: "due", label: `Check up on ${due.length}` },
             { value: "plan", label: "Visit plan by hospital" },
             { value: "all", label: `All agents ${list.length}` },
           ]}
         />
-        {view !== "plan" && <SearchInput placeholder="Search agent, hospital or phone" value={q} onChange={setQ} />}
+        {view !== "plan" && <SearchInput placeholder="Search agent, hospital or phone" value={q} onChange={(v) => (setQ(v), setPage(1))} />}
       </div>
 
       {view === "plan" ? (
@@ -169,7 +176,7 @@ export function AgentMonitorSection({ branchId }: { branchId: string }) {
                     </td>
                   </tr>
                 ) : (
-                  rows.slice(0, shown).map((a) => (
+                  rows.slice((safe - 1) * PER_PAGE, safe * PER_PAGE).map((a) => (
                     <tr key={a.agent.id} className="pr-row" tabIndex={0} onClick={() => setLogging(a)}>
                       <td>
                         <strong>{a.agent.name}</strong>
@@ -216,15 +223,11 @@ export function AgentMonitorSection({ branchId }: { branchId: string }) {
               </tbody>
             </table>
           </div>
-          {rows.length > shown && (
-            <button type="button" className="rf-more am-more" onClick={() => setShown((n) => n + 50)}>
-              Show more ({formatCount(rows.length - shown)} more) <ArrowRight size={14} />
-            </button>
-          )}
+          <Pagination page={safe} pageSize={PER_PAGE} sizes={[PER_PAGE]} total={rows.length} noun="agents" onPage={(n) => setPage(Math.min(Math.max(1, n), pages))} onPageSize={() => setPage(1)} />
         </div>
       )}
       {logging && <CheckUpDialog a={logging} branchId={branchId} onClose={() => setLogging(null)} />}
-    </Reveal>
+    </section>
   );
 }
 
@@ -235,10 +238,12 @@ function CheckUpDialog({ a, branchId, onClose }: { a: AgentHealth; branchId: str
   const [outcome, setOutcome] = useState<Outcome>("Will send patients");
   const [note, setNote] = useState("");
   const [next, setNext] = useState(isoDate(new Date(Date.now() + 14 * 86_400_000)));
+  const inDays = (n: number) => isoDate(new Date(Date.now() + n * 86_400_000));
+  const trend = a.last28 - a.prev28;
   const save = () => {
     addCheckUp({ agentId: a.agent.id, branchId, by: { name: user.name, role: user.role }, kind, outcome, note: note.trim() || undefined, next: next || undefined });
     logAudit({ category: "PR agents", action: `Check-up logged: ${kind}`, record: a.agent.name, details: [outcome, note.trim(), next ? `next ${next}` : ""].filter(Boolean).join(" · "), branchId });
-    showToast(`Check-up with ${a.agent.name} saved. The flag is off until ${next || "two weeks from now"}.`);
+    showToast(`Check-up with ${a.agent.name} saved. The flag is off until ${next ? new Date(`${next}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "two weeks from now"}.`);
     onClose();
   };
   return (
@@ -246,32 +251,51 @@ function CheckUpDialog({ a, branchId, onClose }: { a: AgentHealth; branchId: str
       open
       onClose={onClose}
       icon={ClipboardCheck}
-      wide
+      xl
       title={a.agent.name}
-      description={`${a.hospital}${hasPhone(a.agent.phone) ? ` · ${a.agent.phone}` : ""} · ${STATUS_LABEL[a.status]}`}
+      description={`${a.hospital}${hasPhone(a.agent.phone) ? ` · ${a.agent.phone}` : ""}`}
       footer={
         <>
           <button type="button" className="bl-btn" onClick={onClose}>
             Close
           </button>
-          <button type="button" className="bl-btn is-primary" onClick={save}>
-            <CheckCircle2 size={15} /> Save check-up
+          <button type="button" className="bl-btn is-primary is-lg" onClick={save}>
+            <CheckCircle2 size={16} /> Save check-up
           </button>
         </>
       }
     >
-      <div className="am-dialog">
-        <p className={`am-advice is-${a.status}`}>
-          <Siren size={16} /> {a.action}
-        </p>
-        <div className="am-facts">
+      <div className="cu">
+        {/* Who and how they are doing */}
+        <div className={`cu-hero is-${a.status}`}>
+          <span className="cu-avatar">{a.agent.name.replace(/^(dr|nrs|mr|mrs|ms)\.?\s+/i, "").slice(0, 2).toUpperCase()}</span>
+          <span className="cu-hero-text">
+            <Badge tone={TONE[a.status]} dot>
+              {STATUS_LABEL[a.status]}
+            </Badge>
+            <b>{a.action}</b>
+            <small>{STATUS_HINT[a.status]}</small>
+          </span>
+          <span className="cu-trend">
+            <small>12 weeks</small>
+            <Spark weeks={a.weeks} />
+          </span>
+        </div>
+        <div className="cu-facts">
           <span>
             <small>Last 7 days</small>
             <b>{a.last7}</b>
           </span>
           <span>
             <small>Last 4 weeks</small>
-            <b>{a.last28}</b>
+            <b>
+              {a.last28}{" "}
+              {trend !== 0 && (
+                <em className={trend < 0 ? "is-down" : "is-up"}>
+                  {trend < 0 ? <ArrowDownRight size={14} /> : <ArrowUpRight size={14} />} {Math.abs(trend)}
+                </em>
+              )}
+            </b>
           </span>
           <span>
             <small>4 weeks before</small>
@@ -281,60 +305,135 @@ function CheckUpDialog({ a, branchId, onClose }: { a: AgentHealth; branchId: str
             <small>Last referral</small>
             <b>{when(a.lastAt)}</b>
           </span>
-          <span className="am-facts-spark">
-            <small>12 weeks</small>
-            <Spark weeks={a.weeks} />
+          <span>
+            <small>Last check-up</small>
+            <b>{a.lastCheck ? ago(a.lastCheck.at) : "None yet"}</b>
           </span>
         </div>
-        <div className="ir-form">
-          <label className="field">
-            How
-            <select value={kind} onChange={(e) => setKind(e.target.value as CheckKind)}>
-              <option>Visit</option>
-              <option>Call</option>
-              <option>Message</option>
-            </select>
-          </label>
-          <label className="field">
-            How it went
-            <select value={outcome} onChange={(e) => setOutcome(e.target.value as Outcome)}>
+
+        <div className="cu-grid">
+          {/* Log the check-up */}
+          <section className="cu-card">
+            <h3>Log this check-up</h3>
+            <p className="cu-label">How</p>
+            <div className="cu-seg" role="radiogroup" aria-label="How">
+              {(["Visit", "Call", "Message"] as const).map((k) => (
+                <button key={k} type="button" role="radio" aria-checked={kind === k} className={kind === k ? "is-on" : ""} onClick={() => setKind(k)}>
+                  {k === "Visit" ? <MapPinned size={15} /> : k === "Call" ? <PhoneCall size={15} /> : <Users size={15} />} {k}
+                </button>
+              ))}
+            </div>
+            <p className="cu-label">How it went</p>
+            <div className="cu-chips" role="radiogroup" aria-label="How it went">
               {OUTCOMES.map((o) => (
-                <option key={o}>{o}</option>
+                <button key={o} type="button" role="radio" aria-checked={outcome === o} className={outcome === o ? "is-on" : ""} onClick={() => setOutcome(o)}>
+                  {o}
+                </button>
               ))}
-            </select>
-          </label>
-          <label className="field full">
-            Note (optional)
-            <textarea value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} placeholder="What they said, what they need from the branch …" />
-          </label>
-          <label className="field">
-            Next check-up
-            <input type="date" value={next} min={isoDate(new Date())} onChange={(e) => setNext(e.target.value)} />
-          </label>
+            </div>
+            <label className="field cu-field">
+              Note (optional)
+              <textarea value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} placeholder="What they said, what they need from the branch …" />
+            </label>
+            <p className="cu-label">Next check-up</p>
+            <div className="cu-next">
+              {(
+                [
+                  [7, "In a week"],
+                  [14, "In 2 weeks"],
+                  [30, "In a month"],
+                ] as const
+              ).map(([n, l]) => (
+                <button key={n} type="button" className={next === inDays(n) ? "is-on" : ""} onClick={() => setNext(inDays(n))}>
+                  {l}
+                </button>
+              ))}
+              <input type="date" className="input" value={next} min={isoDate(new Date())} onChange={(e) => setNext(e.target.value)} aria-label="Next check-up date" />
+            </div>
+          </section>
+
+          {/* Earlier check-ups */}
+          <section className="cu-card">
+            <h3>Earlier check-ups</h3>
+            {history.length ? (
+              <ol className="ir-steps">
+                {history.map((c) => (
+                  <li key={c.id}>
+                    <b>
+                      {c.kind} · {c.outcome}
+                    </b>
+                    <small>
+                      {c.by.name}, {c.by.role} · {new Date(c.at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                      {c.next ? ` · next ${new Date(`${c.next}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}` : ""}
+                    </small>
+                    {c.note && <p>{c.note}</p>}
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <div className="cu-empty">
+                <ClipboardCheck size={26} />
+                <b>No check-up yet</b>
+                <small>The first one you log shows here, with who did it.</small>
+              </div>
+            )}
+          </section>
         </div>
-        <section className="ir-card">
-          <h3>Earlier check-ups</h3>
-          {history.length ? (
-            <ol className="ir-steps">
-              {history.map((c) => (
-                <li key={c.id}>
-                  <b>
-                    {c.kind} · {c.outcome}
-                  </b>
-                  <small>
-                    {c.by.name}, {c.by.role} · {new Date(c.at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
-                    {c.next ? ` · next ${new Date(`${c.next}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}` : ""}
-                  </small>
-                  {c.note && <p>{c.note}</p>}
-                </li>
-              ))}
-            </ol>
-          ) : (
-            <p className="rf-muted">No check-up logged yet.</p>
-          )}
-        </section>
       </div>
     </Modal>
+  );
+}
+
+/* ─────────────── month picker (in the app, with years) ─────────────── */
+
+const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** A month picker that opens inside the app: choose the year, then the month (only months that have ended). */
+function MonthPicker({ value, onChange }: { value: string; onChange: (m: string) => void }) {
+  const anchor = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  const now = new Date();
+  const thisYear = now.getFullYear();
+  const [year, setYear] = useState(Number(value.slice(0, 4)));
+  const years = [thisYear - 2, thisYear - 1, thisYear];
+  return (
+    <>
+      <button ref={anchor} type="button" className="mp-btn" aria-haspopup="dialog" aria-expanded={open} onClick={() => (setYear(Number(value.slice(0, 4))), setOpen((o) => !o))}>
+        <CalendarCheck size={16} /> {monthLabel(value)} <ChevronDown size={16} />
+      </button>
+      <Popover anchor={anchor} open={open} onClose={() => setOpen(false)} placement="bottom-end" width={300} label="Choose a month">
+        <div className="mp">
+          <div className="mp-years" role="tablist" aria-label="Year">
+            {years.map((y) => (
+              <button key={y} type="button" role="tab" aria-selected={year === y} className={year === y ? "is-on" : ""} onClick={() => setYear(y)}>
+                {y}
+              </button>
+            ))}
+          </div>
+          <div className="mp-grid">
+            {MONTHS_SHORT.map((m, i) => {
+              const key = `${year}-${String(i + 1).padStart(2, "0")}`;
+              // Only months that have ended can be settled.
+              const future = year > thisYear || (year === thisYear && i >= now.getMonth());
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  disabled={future}
+                  className={key === value ? "is-on" : ""}
+                  onClick={() => {
+                    onChange(key);
+                    setOpen(false);
+                  }}
+                >
+                  {m}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </Popover>
+    </>
   );
 }
 
@@ -347,20 +446,27 @@ export function PayoutMonthsSection({ branchId }: { branchId: string }) {
   const reports = useIssueReports();
   const br = branchRoute(route);
   const allowed = can(user.role, "referral.commission") && canMarkPaid(user, br?.branchId ?? null, branchId);
-  const months = lastMonths(13).slice(1);
-  const [month, setMonth] = useState(months[0]!);
+  const [month, setMonth] = useState(lastMonths(2)[1]!);
   const [picked, setPicked] = useState<number[]>([]);
   const [ref, setRef] = useState("");
+  const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
   const [undo, setUndo] = useState<{ id: number; name: string } | null>(null);
   const [why, setWhy] = useState("");
   const range = useMemo(() => resolveRange({ key: "custom", from: `${month}-01`, to: isoDate(new Date(Number(month.slice(0, 4)), Number(month.slice(5)), 0)) }), [month]);
-  const rows = useMemo(() => agentRanking([branchId], range).filter((a) => a.referrals > 0), [branchId, range]);
-  const byId = new Map(agents.map((a) => [a.id, a]));
+  const rows = useMemo(() => (allowed ? agentRanking([branchId], range).filter((a) => a.referrals > 0) : []), [allowed, branchId, range]);
+  const byId = useMemo(() => new Map(agents.map((a) => [a.id, a])), [agents]);
   if (!allowed) return null;
   const c = getBranch(branchId)?.currency ?? "NGN";
   const unpaid = rows.filter((a) => !paidMark(marks, branchId, month, a.id));
   const issues = reports.filter((r) => r.aboutKind === "payout" && r.month === month && r.branchId === branchId && r.status !== "resolved");
   const total = rows.reduce((s, a) => s + (a.commission[c] ?? 0), 0);
+  const t = q.trim().toLowerCase();
+  const shown = rows.filter((a) => !t || `${a.name} ${a.hospitalKey}`.toLowerCase().includes(t));
+  const pages = Math.max(1, Math.ceil(shown.length / PER_PAGE));
+  const safe = Math.min(page, pages);
+  const visible = shown.slice((safe - 1) * PER_PAGE, safe * PER_PAGE);
+  const toggle = (id: number) => setPicked((x) => (x.includes(id) ? x.filter((i) => i !== id) : [...x, id]));
   const mark = (ids: number[]) => {
     if (!ids.length) return;
     markPaid(branchId, month, ids, { name: user.name, role: user.role }, ref);
@@ -369,20 +475,14 @@ export function PayoutMonthsSection({ branchId }: { branchId: string }) {
     setPicked([]);
   };
   return (
-    <Reveal as="section" className="bd-sec am-sec">
+    <section className="bd-sec am-sec">
       <header className="bd-sec-head">
         <div>
           <span className="bd-eyebrow">Commission</span>
           <h2>Monthly payouts</h2>
           <p>After paying the agents for a month, mark it paid. Agents see the month as Ended ✓ in their app (never the amount). {user.kind === "admin" ? "As Company Admin you can mark any branch." : "You can mark your own branch."}</p>
         </div>
-        <select className="ir-prio am-month" value={month} onChange={(e) => (setMonth(e.target.value), setPicked([]))} aria-label="Month">
-          {months.map((m) => (
-            <option key={m} value={m}>
-              {monthLabel(m)}
-            </option>
-          ))}
-        </select>
+        <MonthPicker value={month} onChange={(m) => (setMonth(m), setPicked([]), setPage(1))} />
       </header>
       {issues.length > 0 && (
         <button type="button" className="am-issue" onClick={() => navigate(br ? `/branch/${branchId}/reports` : "/reports")}>
@@ -401,9 +501,12 @@ export function PayoutMonthsSection({ branchId }: { branchId: string }) {
           <CheckCircle2 size={15} /> Mark all paid
         </button>
       </div>
+      <div className="am-tools">
+        <SearchInput placeholder="Search agent or hospital" value={q} onChange={(v) => (setQ(v), setPage(1))} />
+      </div>
       <div className="card bp-card rf-table-card">
-        <div className="table-wrap thin-scroll am-pay-wrap">
-          <table className="bp-table rf-table" aria-label="Monthly payouts">
+        <div className="table-wrap thin-scroll">
+          <table className="bp-table rf-table am-pay" aria-label="Monthly payouts">
             <thead>
               <tr>
                 <th aria-label="Select" />
@@ -416,20 +519,22 @@ export function PayoutMonthsSection({ branchId }: { branchId: string }) {
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 ? (
+              {visible.length === 0 ? (
                 <tr>
                   <td colSpan={7}>
-                    <EmptyState title="No referrals that month">Nothing to pay for {monthLabel(month)}.</EmptyState>
+                    <EmptyState title={rows.length ? "No agent matches" : "No referrals that month"}>{rows.length ? "Try another search." : `Nothing to pay for ${monthLabel(month)}.`}</EmptyState>
                   </td>
                 </tr>
               ) : (
-                rows.map((a) => {
+                visible.map((a) => {
                   const p = paidMark(marks, branchId, month, a.id);
                   const bank = byId.get(a.id)?.bank;
                   const issue = issues.find((r) => r.from.agentId === a.id);
+                  const on = picked.includes(a.id);
                   return (
-                    <tr key={a.id}>
-                      <td>{!p && <input type="checkbox" aria-label={`Select ${a.name}`} checked={picked.includes(a.id)} onChange={(e) => setPicked((x) => (e.target.checked ? [...x, a.id] : x.filter((i) => i !== a.id)))} />}</td>
+                    // Owner, 2026-11-26: clicking anywhere on the row ticks it.
+                    <tr key={a.id} className={`pr-row ${on ? "is-picked" : ""} ${p ? "is-paid" : ""}`} onClick={() => !p && toggle(a.id)} tabIndex={p ? -1 : 0} onKeyDown={(k) => !p && (k.key === " " || k.key === "Enter") && (k.preventDefault(), toggle(a.id))}>
+                      <td>{p ? <CheckCircle2 size={18} className="am-paid-tick" /> : <input type="checkbox" aria-label={`Select ${a.name}`} checked={on} onClick={(e) => e.stopPropagation()} onChange={() => toggle(a.id)} />}</td>
                       <td>
                         <strong>{a.name}</strong>
                         <small className="ep-sub">{a.hospitalKey || "No hospital"}</small>
@@ -438,17 +543,35 @@ export function PayoutMonthsSection({ branchId }: { branchId: string }) {
                       <td className="num">
                         <strong>{formatMoney(a.commission[c] ?? 0, c)}</strong>
                       </td>
-                      <td>{bank ? <span className="am-bank">{bank.bankName}<small className="ep-sub mono">{bank.accountNumber}</small></span> : <span className="lg-muted">No bank details</span>}</td>
+                      <td>
+                        {bank ? (
+                          <span className="am-bank">
+                            {bank.bankName}
+                            <small className="ep-sub mono">{bank.accountNumber}</small>
+                          </span>
+                        ) : (
+                          <span className="lg-muted">No bank details</span>
+                        )}
+                      </td>
                       <td>
                         {issue ? <Badge tone="danger">Issue reported</Badge> : p ? <Badge tone="ok" dot>Paid</Badge> : <Badge tone="warn">Not marked</Badge>}
-                        {p && <small className="ep-sub">{p.by.name} · {new Date(p.at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}{p.reference ? ` · ${p.reference}` : ""}</small>}
+                        {p && (
+                          <small className="ep-sub">
+                            {p.by.name} · {new Date(p.at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                            {p.reference ? ` · ${p.reference}` : ""}
+                          </small>
+                        )}
                       </td>
                       <td className="rf-td-go">
                         {p && (
                           <button
                             type="button"
                             className="am-undo"
-                            onClick={() => (setWhy(""), setUndo({ id: a.id, name: a.name }))}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setWhy("");
+                              setUndo({ id: a.id, name: a.name });
+                            }}
                           >
                             <RotateCcw size={14} /> Undo
                           </button>
@@ -461,6 +584,7 @@ export function PayoutMonthsSection({ branchId }: { branchId: string }) {
             </tbody>
           </table>
         </div>
+        <Pagination page={safe} pageSize={PER_PAGE} sizes={[PER_PAGE]} total={shown.length} noun="agents" onPage={(n) => setPage(Math.min(Math.max(1, n), pages))} onPageSize={() => setPage(1)} />
       </div>
       {undo && (
         <Modal
@@ -496,6 +620,6 @@ export function PayoutMonthsSection({ branchId }: { branchId: string }) {
           </label>
         </Modal>
       )}
-    </Reveal>
+    </section>
   );
 }
