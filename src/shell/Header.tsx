@@ -384,7 +384,7 @@ function ProfileMenu() {
   // Demo stand-in for sign-in: the branch's people (manager first).
   const access = useAccountAccess();
   // Deactivated accounts can't sign in (Staff Management → Access & account).
-  const accounts = br ? staff.filter((s) => s.branchId === br.branchId && s.status !== "Left" && s.status !== "Suspended" && !access[staffKey(s.id)]?.off).sort((a, b) => Number(isManager(b)) - Number(isManager(a)) || a.name.localeCompare(b.name)) : [];
+  const accounts = br ? staff.filter((s) => s.branchId === br.branchId && s.status !== "Left" && s.status !== "Suspended" && !access[staffKey(s.id)]?.off && s.role !== "Marketer").sort((a, b) => Number(isManager(b)) - Number(isManager(a)) || a.name.localeCompare(b.name)) : [];
   const hasManager = accounts.some(isManager);
   return (
     <>

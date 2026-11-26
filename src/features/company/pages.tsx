@@ -24,6 +24,7 @@ import { ReportsHome } from "@/features/reports/ReportsHome";
 import { AnalysisPanel } from "@/features/reports/AnalysisPanel";
 import { StaffBranchView } from "@/features/staff/StaffWorkspace";
 import { AgentMonitorSection, PayoutMonthsSection } from "@/features/pr/AgentMonitor";
+import { MarketersSection } from "@/features/pr/Marketers";
 import { AuditLogView, TrashLogView } from "@/features/admin/AdminLogs";
 import { managerOf } from "@/data/userRecords";
 import { financeTotals } from "@/services/finance";
@@ -404,6 +405,7 @@ export function PRPage() {
             </nav>
           )}
           <AgentMonitorSection branchId={branch.id} />
+          <MarketersSection branchId={branch.id} />
           <PayoutMonthsSection branchId={branch.id} />
           <PRView scope={[branch.id]} />
         </>
