@@ -3,6 +3,10 @@ import ReactDOM from 'react-dom/client'
 import './index.css'
 import { runStartupChecks } from './services/recovery/startup'
 import { RecoveryBoundary } from './features/recovery/RecoveryBoundary'
+import { installPopupFade } from './shared/ui/popupFade'
+
+// Every pop-up fades out when it closes (owner, 2026-11-26).
+installPopupFade()
 
 const root = ReactDOM.createRoot(document.getElementById('root')!)
 

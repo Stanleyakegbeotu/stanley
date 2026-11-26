@@ -1,0 +1,374 @@
+/*
+ * Header search that folds to its icon, and the Inbox page
+ * (owner, 2026-11-26). The Inbox reuses the STANLEY AI chat design
+ * (assistant.css: .ai-workspace, .ai-chat, .ai-msg, .ai-composer).
+ */
+
+/* ── Header: search as an icon among the header icons, opening to a box ── */
+.hdr-spacer {
+  flex: 1;
+  min-width: 0;
+}
+.hdr-search-slot {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+}
+.hdr-search-slot .hdr-search {
+  flex: none;
+  width: min(440px, 34vw);
+  min-width: 54px;
+  transition:
+    width 0.32s var(--ease),
+    padding 0.32s var(--ease),
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+.hdr-search-slot:not(.is-open) .hdr-search {
+  width: 54px;
+  padding: 0;
+  justify-content: center;
+  gap: 0;
+  cursor: pointer;
+  border-width: 1px;
+  border-color: var(--line-2);
+  color: var(--ink-2);
+}
+.hdr-search-slot:not(.is-open) .hdr-search > svg {
+  color: var(--ink-2);
+}
+.hdr-search-slot:not(.is-open) .hdr-search:hover {
+  border-color: color-mix(in srgb, var(--brand-500) 45%, var(--line-2));
+}
+.hdr-search-slot:not(.is-open) .hdr-search input,
+.hdr-search-slot:not(.is-open) .hdr-search .kbd {
+  flex: 0 0 0;
+  width: 0;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.hdr-search-slot .hdr-search input,
+.hdr-search-slot .hdr-search .kbd {
+  transition: opacity 0.2s 0.08s;
+}
+
+.hdr-inbox.is-on {
+  border-color: var(--brand-500);
+  color: var(--brand-700);
+}
+
+/* ── Inbox page ── */
+.ib-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  gap: 20px;
+  padding: 20px 24px 24px;
+}
+.ib-list {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--canvas);
+}
+.ib-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--brand-700);
+}
+.ib-search:focus-within {
+  border-color: var(--brand-500);
+  box-shadow: 0 0 0 4px var(--brand-100);
+}
+.ib-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+}
+.ib-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, auto);
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.ib-tabs button {
+  height: 32px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ib-tabs button em {
+  font-style: normal;
+  font-weight: 700;
+  opacity: 0.7;
+}
+.ib-tabs button.is-on {
+  background: var(--brand-600);
+  color: #fff;
+}
+.ib-items {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+}
+.ib-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 10px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.15s var(--ease),
+    border-color 0.15s var(--ease),
+    transform 0.15s var(--ease);
+}
+.ib-item:hover {
+  background: var(--surface);
+  transform: translateX(2px);
+}
+.ib-item.is-on {
+  background: var(--surface);
+  border-color: var(--brand-200);
+  box-shadow:
+    var(--shadow-1),
+    inset 3px 0 0 var(--brand-600);
+}
+.ib-avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--brand-100);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--brand-800);
+}
+.ib-avatar.is-admin,
+.ib-avatar.is-frontdesk {
+  border-radius: 13px;
+  background: linear-gradient(150deg, var(--brand-500), var(--brand-800));
+  color: #fff;
+}
+.ib-avatar.is-manager {
+  background: color-mix(in srgb, var(--brand-500) 22%, var(--surface));
+}
+.ib-avatar.is-lg {
+  width: 48px;
+  height: 48px;
+}
+.ib-item-text {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 2px;
+}
+.ib-item-top,
+.ib-item-sub {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.ib-item-top b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  color: var(--ink);
+}
+.ib-item-top small {
+  flex: none;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.ib-item-sub small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.ib-item.has-unread .ib-item-sub small {
+  font-weight: 650;
+  color: var(--ink-2);
+}
+.ib-item-sub em {
+  flex: none;
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--danger);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  color: #fff;
+}
+.ib-none {
+  padding: 24px 8px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+.ib-chat-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+.ib-chat-title {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+}
+.ib-chat-title b {
+  font-size: 16px;
+  color: var(--ink);
+}
+.ib-chat-title small {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.ib-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 9px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--warn-bg);
+  font-size: 12.5px;
+  color: var(--warn);
+}
+.ib-thread {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ib-li {
+  display: grid;
+  gap: 14px;
+}
+.ib-day {
+  justify-self: center;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--canvas-2);
+  font-size: 11.5px;
+  font-weight: 650;
+  color: var(--muted);
+}
+/* Their messages: a bubble, not the full-width AI answer. */
+.ib-thread .ai-msg.is-assistant .ai-bubble {
+  flex: 0 1 auto;
+  max-width: 72%;
+}
+.ib-from {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 12px;
+  color: var(--brand-700);
+}
+.ib-av-txt {
+  font-size: 11px;
+  font-weight: 700;
+}
+.ib-start {
+  height: 100%;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  text-align: center;
+}
+.ib-start b {
+  font-size: 16px;
+  color: var(--ink);
+}
+.ib-start small {
+  max-width: 360px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.ib-who {
+  cursor: default;
+}
+.ib-empty {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+@media (max-width: 1100px) {
+  .ib-body {
+    grid-template-columns: 280px minmax(0, 1fr);
+  }
+}
+.ib-items {
+  overflow-x: hidden;
+}
+.ib-item-text > * {
+  min-width: 0;
+}
+.ib-item:hover {
+  transform: none;
+}
+/* The open search takes the free space it has, never pushing the profile out. */
+.hdr-search-slot {
+  flex: 0 1 auto;
+  min-width: 54px;
+}
+.hdr-search-slot.is-open {
+  min-width: 200px;
+}
+.hdr-search-slot .hdr-search {
+  max-width: 100%;
+}
+.topbar > .hdr-avatar,
+.topbar > .hdr-control:not(.hdr-search-slot *) {
+  flex-shrink: 0;
+}

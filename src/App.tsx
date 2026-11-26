@@ -18,6 +18,7 @@ import { SettingsPage } from "@/features/settings/AdminSettings";
 import { BranchWorkspacePage } from "@/features/branch/pages";
 import { AssistantDock } from "@/features/assistant/AssistantDock";
 import { AssistantPage } from "@/features/assistant/AssistantPage";
+import { InboxPage } from "@/features/inbox/InboxPage";
 import { PageProbeHost } from "@/features/assistant/PageProbeHost";
 import { setPageRenderer } from "@/services/assistant/probe";
 import { setReturnPath } from "@/services/assistant/store";
@@ -55,6 +56,8 @@ function RouteView({ route }: { route: Route }) {
       return <AssistantPage mode="intelligence" base="" />;
     case "support":
       return <AssistantPage mode="issues" base="" />;
+    case "messages":
+      return <InboxPage />;
     default:
       return <CompanyDashboard />;
   }

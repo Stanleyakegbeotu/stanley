@@ -1231,3 +1231,42 @@
 .bl-lines li.is-error {
   border-color: var(--danger);
 }
+
+/* ─────────────── Pop-ups fade out when they close (owner, 2026-11-26) ───────────────
+   shared/ui/popupFade.ts puts a still copy of a closing pop-up here and fades it:
+   the backdrop fades, the card sinks a little and fades. */
+.modal-ghost {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background: color-mix(in srgb, var(--sb-2) 42%, transparent);
+  backdrop-filter: blur(3px);
+  pointer-events: none;
+  animation: popup-layer-out 0.24s ease forwards;
+}
+.modal-ghost > * {
+  animation: popup-card-out 0.24s cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+@keyframes popup-layer-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@keyframes popup-card-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(12px) scale(0.975);
+    filter: blur(3px);
+  }
+}

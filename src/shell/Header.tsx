@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Building2,
   CalendarDays,
@@ -29,6 +29,7 @@ import { Popover } from "@/shared/ui/Popover";
 import { NotificationsButton } from "@/features/notifications/Notifications";
 import { PriceCalculatorButton } from "@/features/quote/PriceCalculator";
 import { PatientSearch } from "./PatientSearch";
+import { InboxButton } from "@/features/inbox/InboxPage";
 import { useNetworkStatus } from "@/shared/useNetworkStatus";
 import { syncQueue, useBilling } from "@/services/billing";
 import { expenseSyncQueue, useExpenses } from "@/services/expenses";
@@ -38,14 +39,60 @@ export function Header() {
   const br = branchRoute(route);
   return (
     <header className="topbar">
-      {br ? <PatientSearch branchId={br.branchId} /> : <GlobalSearch />}
-      <DateTime compact={!!br} />
+      {/* Owner, 2026-11-26: date, time and the price calculator on the left; the search icon sits with the other header icons. */}
+      <DateTime compact />
       {br && <PriceCalculatorButton branchId={br.branchId} />}
+      <span className="hdr-spacer" aria-hidden="true" />
+      <SearchSlot>{br ? <PatientSearch branchId={br.branchId} /> : <GlobalSearch />}</SearchSlot>
       <NetworkButton />
+      <InboxButton />
       <NotificationsButton />
       <span className="hdr-divider" aria-hidden="true" />
       <ProfileMenu />
     </header>
+  );
+}
+
+/* ─────────────── Search: an icon until it is used ─────────────── */
+
+/**
+ * Owner, 2026-11-26: the header shows only the search icon; clicking it (or
+ * Ctrl K) opens the search box for typing, and it folds back to the icon when
+ * it is left empty. The search stays mounted, so a record it opened stays open.
+ */
+function SearchSlot({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const input = () => ref.current?.querySelector("input") ?? null;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") setOpen(true);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  const maybeClose = () =>
+    window.setTimeout(() => {
+      const el = ref.current;
+      if (!el || el.contains(document.activeElement) || input()?.value.trim()) return;
+      setOpen(false);
+    }, 180);
+  return (
+    <div
+      ref={ref}
+      className={`hdr-search-slot ${open ? "is-open" : ""}`}
+      onFocus={() => setOpen(true)}
+      onBlur={maybeClose}
+      onMouseDown={(e) => {
+        if (open) return;
+        e.preventDefault();
+        setOpen(true);
+        window.requestAnimationFrame(() => input()?.focus());
+      }}
+      title={open ? undefined : "Search (Ctrl K)"}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -183,7 +230,7 @@ function GlobalSearch({ scopeBranchId }: { scopeBranchId?: string }) {
 }
 
 /* ─────────────── Date & time ─────────────── */
-/** `compact` (branch workspace): abbreviated "SAT, 21 NOV 26" to leave room for the price calculator. */
+/** `compact` (every dashboard since 2026-11-26): short "THU, 26 NOV" to leave room in the header. */
 function DateTime({ compact = false }: { compact?: boolean }) {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -197,7 +244,7 @@ function DateTime({ compact = false }: { compact?: boolean }) {
         <span className="dt-date" aria-hidden="true">
           <CalendarDays size={18} />
           <span>
-            {part({ weekday: "short" })}, {now.getDate()} {part({ month: "short" }).slice(0, 3)} {String(now.getFullYear()).slice(2)}
+            {part({ weekday: "short" })}, {now.getDate()} {part({ month: "short" }).slice(0, 3)}
           </span>
         </span>
         <time className="hdr-time" dateTime={now.toISOString()} aria-hidden="true">
