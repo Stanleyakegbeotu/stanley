@@ -109,7 +109,7 @@ export function useTopPerformance(branchIds: string[], range: DateRange) {
 export type TopPerformanceData = ReturnType<typeof useTopPerformance>;
 
 /** Hospital Performance slot: referring hospitals, with referring doctors alongside. */
-export function HospitalPerformanceView({ t, basePath = "/reports" }: { t: TopPerformanceData; basePath?: string }) {
+export function HospitalPerformanceView({ t, basePath = "/analysis" }: { t: TopPerformanceData; basePath?: string }) {
   const { navigate } = useApp();
   return (
     <>
@@ -123,7 +123,7 @@ export function HospitalPerformanceView({ t, basePath = "/reports" }: { t: TopPe
 }
 
 /** Daily Test Category Summary slot (currently service-level, tagged by category). */
-export function TestSummaryView({ t, basePath = "/reports" }: { t: TopPerformanceData; basePath?: string }) {
+export function TestSummaryView({ t, basePath = "/analysis" }: { t: TopPerformanceData; basePath?: string }) {
   const { navigate } = useApp();
   return (
     <>
@@ -136,7 +136,7 @@ export function TestSummaryView({ t, basePath = "/reports" }: { t: TopPerformanc
 }
 
 /** Self-contained section (used by the Branch dashboard). */
-export function TopPerformanceSection({ branchIds, range, basePath = "/reports" }: { branchIds: string[]; range: DateRange; basePath?: string }) {
+export function TopPerformanceSection({ branchIds, range, basePath = "/analysis" }: { branchIds: string[]; range: DateRange; basePath?: string }) {
   const { navigate } = useApp();
   const { doctors, hospitals, services } = useTopPerformance(branchIds, range);
 

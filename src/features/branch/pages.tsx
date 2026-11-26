@@ -17,6 +17,7 @@ import { BranchAuditPage, BranchSettingsPage, BranchTrashPage } from "@/features
 import { BranchHome } from "./BranchHome";
 import { AssistantPage } from "@/features/assistant/AssistantPage";
 import { InboxPage } from "@/features/inbox/InboxPage";
+import { IssueReportsPage } from "@/features/issues/IssueReportsPage";
 import { BillingWorkspace } from "@/features/billing/BillingWorkspace";
 
 /** Branch Staff Management — the same staff list and profiles as the Company Admin's page, for this branch only. */
@@ -102,6 +103,8 @@ export function BranchWorkspacePage({ branchId, page }: { branchId: string; page
       return <AssistantPage mode="issues" base={`/branch/${branch.id}`} />;
     case "messages":
       return <InboxPage />;
+    case "reports":
+      return <IssueReportsPage branchId={branch.id} />;
     default:
       return <BranchHome branch={branch} />;
   }

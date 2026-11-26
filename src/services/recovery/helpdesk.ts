@@ -52,7 +52,8 @@ export const PAGES: PageGuide[] = [
   { id: "inventory", label: "Inventory", what: "The price list — every test/service, its category and price.", scope: "both", words: ["inventory", "price list", "prices", "price", "services", "tests", "test", "catalogue", "scan price", "xray price", "lab tests", "categories"] },
   { id: "pr", label: "PR Management", what: "PR agents (marketers), the hospitals they bring patients from, commission.", scope: "both", words: ["pr", "pr agent", "pr agents", "agent", "agents", "marketer", "marketers", "referral", "referrer", "hospital", "hospitals", "commission", "payout"] },
   { id: "analysis", label: "Analysis", what: "Money in, trends, most-done tests and the role's reports.", scope: "branch", words: ["analysis", "reports", "report", "statistics", "stats", "trend", "chart", "graph", "performance"] },
-  { id: "reports", label: "Reports", what: "Build, preview, print, download (PDF) or export (CSV) reports.", scope: "company", words: ["reports", "report", "pdf", "csv", "export", "statement"] },
+  { id: "analysis", label: "Analysis", what: "Build, preview, print, download (PDF) or export (CSV) reports.", scope: "company", words: ["analysis", "pdf", "csv", "export", "statement", "report builder"] },
+  { id: "reports", label: "Reports", what: "Complaints and issues from PR agents and staff: new, attended and resolved.", scope: "both", words: ["reports", "complaint", "complaints", "issue", "rude", "result not clear"] },
   { id: "expenses", label: "Expenses", what: "Record branch spending; managers approve or reject.", scope: "branch", words: ["expenses", "expense", "spending", "spent", "cost", "costs", "purchase", "outsourced", "approve expense", "petty cash", "diesel", "fuel"] },
   { id: "finance", label: "Finance & Expenses", what: "Money in, costs and net profit (Company Admin).", scope: "company", words: ["finance", "profit", "net profit", "money", "revenue", "income", "outstanding"] },
   { id: "staff", label: "Staff Management", what: "The branch team — manager and front-desk accounts.", scope: "both", words: ["staff", "staff management", "employee", "employees", "team", "worker", "workers", "front desk", "manager", "add staff"] },
@@ -243,7 +244,7 @@ export function locate(page: PageGuide, who: { kind: Kind; role: string; branchI
     return { canOpen: true, where: `${page.label} is in your sidebar on the left${page.id === "notifications" ? " (the bell at the top right)" : ""}.`, to: path };
   }
   if (page.scope === "company")
-    return { canOpen: false, where: `${page.label} is a Company Admin page. ${page.id === "patients" ? "At your branch, patients are on the Records page." : page.id === "reports" ? "At your branch, reports are on the Analysis page." : page.id === "finance" ? "Net profit and company finance are only for the Company Admin." : page.id === "branches" ? "Branches are managed by the Company Admin." : ""}`.trim() };
+    return { canOpen: false, where: `${page.label} is a Company Admin page. ${page.id === "patients" ? "At your branch, patients are on the Records page." : page.id === "analysis" ? "At your branch, reports are made on the Analysis page." : page.id === "finance" ? "Net profit and company finance are only for the Company Admin." : page.id === "branches" ? "Branches are managed by the Company Admin." : ""}`.trim() };
   if (!who.branchId) return { canOpen: false, where: `${page.label} is inside the branch workspace.` };
   if (page.id === "notifications") return { canOpen: true, where: "Notifications are the bell at the top right of the header.", to: `/branch/${who.branchId}/notifications` };
   const ok = canOpenBranchPage(who.role, page.id);

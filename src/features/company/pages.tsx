@@ -817,14 +817,14 @@ export function ReportsView({ ids, basePath }: { ids: string[]; basePath: string
 }
 
 /*
- * Reports: one card per report; each opens the report builder pop-up
+ * Analysis (was "Reports" until 2026-11-26; Reports is now complaints and issues): one card per report; each opens the report builder pop-up
  * (choose → preview → print / download PDF / export spreadsheet).
  */
 export function ReportsPage() {
   const { scope, scopeLabel } = useScope();
   return (
     <AnimatedPage>
-      <PageHero eyebrow={`Reports & exports · ${scopeLabel}`} title="Reports" period={false} stats="reports" />
+      <PageHero eyebrow={`Analysis, reports & exports · ${scopeLabel}`} title="Analysis" period={false} stats="reports" />
       <AnalysisPanel ids={scope ?? ACTIVE_BRANCHES.map((b) => b.id)} level="admin" scopeLabel={scopeLabel} />
       <ReportsHome initialBranch={scope?.[0]} />
     </AnimatedPage>

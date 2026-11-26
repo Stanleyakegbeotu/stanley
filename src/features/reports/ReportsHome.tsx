@@ -17,7 +17,7 @@ const LEGACY_TABS: Record<string, string> = { overview: "revenue", doctors: "age
 export function ReportsHome({
   initialBranch,
   reports = REPORTS,
-  basePath = "/reports",
+  basePath = "/analysis",
   lockedBranch,
   heading = "Choose a report",
   maxDays,

@@ -911,3 +911,169 @@
 .ib-composer {
   padding-right: 108px;
 }
+
+/* ── Reports (complaints and issues) ── */
+.ir-intro {
+  margin: 18px 2px 4px;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+.ir-toolbar {
+  flex-wrap: wrap;
+}
+.ir-subject strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ir-urgent {
+  color: var(--danger);
+}
+.ir-detail {
+  display: grid;
+  gap: 16px;
+}
+.ir-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 10px;
+}
+.ir-facts > span {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: linear-gradient(150deg, var(--surface), var(--brand-50));
+}
+.ir-facts small {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.ir-facts b {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 14px;
+  color: var(--ink);
+}
+.ir-facts .is-urgent {
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--line));
+  background: var(--danger-bg);
+}
+.ir-facts .is-urgent b {
+  color: var(--danger);
+}
+.ir-card {
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+.ir-card h3 {
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--brand-800);
+}
+.ir-text {
+  margin: 0;
+  white-space: pre-wrap;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+.ir-steps {
+  margin: 0;
+  padding: 0 0 0 18px;
+  border-left: 2px solid var(--line);
+  list-style: none;
+}
+.ir-steps li {
+  position: relative;
+  padding: 0 0 14px 6px;
+}
+.ir-steps li::before {
+  content: "";
+  position: absolute;
+  left: -25px;
+  top: 4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--brand-600);
+  box-shadow: 0 0 0 3px var(--surface);
+}
+.ir-steps li:last-child {
+  padding-bottom: 0;
+}
+.ir-steps b {
+  display: block;
+  font-size: 13.5px;
+  color: var(--ink);
+}
+.ir-steps small {
+  font-size: 12px;
+  color: var(--muted);
+}
+.ir-steps p {
+  margin: 6px 0 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--canvas);
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+.ir-note-btn {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--brand-700);
+  cursor: pointer;
+}
+.ir-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  width: 100%;
+}
+.ir-foot > :first-child {
+  margin-right: auto;
+}
+.ir-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.ir-form .full {
+  grid-column: 1 / -1;
+}
+.ir-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.ir-subject strong {
+  display: block;
+}
+.ir-urgent {
+  margin-right: 4px;
+  vertical-align: -2px;
+}
+.ir-facts .badge {
+  justify-self: start;
+}

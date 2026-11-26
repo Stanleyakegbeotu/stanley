@@ -403,9 +403,9 @@ function checkPageAccess(ctx: ScanContext): CheckResult | null {
 function pagePath(ctx: ScanContext): string | null {
   const f = ctx.focus;
   if (!f) return null;
-  const company = ["patients", "finance", "reports", "branches"];
+  const company = ["patients", "finance", "branches"];
   if (ctx.user.kind === "admin" && (company.includes(f) || !ctx.branchId)) {
-    if (company.includes(f) || ["dashboard", "inventory", "staff", "pr", "settings", "audit", "trash"].includes(f)) return `/${f}`;
+    if (company.includes(f) || ["dashboard", "inventory", "staff", "pr", "settings", "audit", "trash", "analysis", "reports", "messages"].includes(f)) return `/${f}`;
     const first = ACTIVE_BRANCHES[0]?.id;
     return first ? `/branch/${first}/${f}` : null;
   }
