@@ -190,7 +190,7 @@ export function ReportBuilder({
   initialMonth?: string | null;
   onClose: () => void;
 }) {
-  const { agents, showToast, user } = useApp();
+  const { agents, showToast, user, staff } = useApp();
   // Net profit / margin only for the Company Admin (owner rule).
   const hideProfit = user.kind !== "admin";
   setReportPreparer(user.name, user.role);
@@ -262,7 +262,7 @@ export function ReportBuilder({
   }, [paperKey]);
   const params = useMemo<ReportParams>(() => ({ variant, range, branch, options, columns: cols, selects, paper }), [variant, range, branch, options, cols, selects, paper]);
   const deferred = useDeferredValue(params);
-  const doc = useMemo(() => spec.build(deferred, { agents, hideProfit }), [spec, deferred, agents, hideProfit]);
+  const doc = useMemo(() => spec.build(deferred, { agents, hideProfit, staff }), [spec, deferred, agents, hideProfit, staff]);
   const stale = deferred !== params;
   const { pages, measurer } = usePagination(doc, deferred.paper);
   const rows = tableRowCount(doc);

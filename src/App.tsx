@@ -13,11 +13,14 @@ import { Header } from "@/shell/Header";
 import { Sidebar } from "@/shell/Sidebar";
 import { COMPANY_NAV, BRANCH_NAV_ITEMS } from "@/shell/navigation";
 import { CompanyDashboard } from "@/features/company/CompanyDashboard";
+import { CompanyMarketingPage } from "@/features/marketing/MarketingPage";
 import { AuditPage, BranchesPage, FinancePage, InventoryPage, PatientsPage, PRPage, ReportsPage, StaffPage, TrashPage } from "@/features/company/pages";
 import { SettingsPage } from "@/features/settings/AdminSettings";
 import { BranchWorkspacePage } from "@/features/branch/pages";
 import { AssistantDock } from "@/features/assistant/AssistantDock";
 import { AssistantPage } from "@/features/assistant/AssistantPage";
+import { InboxPage } from "@/features/inbox/InboxPage";
+import { IssueReportsPage } from "@/features/issues/IssueReportsPage";
 import { PageProbeHost } from "@/features/assistant/PageProbeHost";
 import { setPageRenderer } from "@/services/assistant/probe";
 import { setReturnPath } from "@/services/assistant/store";
@@ -39,12 +42,17 @@ function RouteView({ route }: { route: Route }) {
       return <StaffPage />;
     case "pr":
       return <PRPage />;
+    case "marketing":
+      return <CompanyMarketingPage />;
     case "patients":
       return <PatientsPage />;
     case "finance":
       return <FinancePage />;
-    case "reports":
+    case "analysis":
       return <ReportsPage />;
+    case "reports":
+      // Owner, 2026-11-26: Reports are complaints and issues; the report builder is Analysis (old links still open it).
+      return route.query.get("report") ? <ReportsPage /> : <IssueReportsPage branchId={null} />;
     case "settings":
       return <SettingsPage />;
     case "audit":
@@ -55,6 +63,8 @@ function RouteView({ route }: { route: Route }) {
       return <AssistantPage mode="intelligence" base="" />;
     case "support":
       return <AssistantPage mode="issues" base="" />;
+    case "messages":
+      return <InboxPage />;
     default:
       return <CompanyDashboard />;
   }

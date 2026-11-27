@@ -23,6 +23,8 @@ import { UserAvatar } from "@/shell/BrandLogo";
 import { resolvePhoto, useSettings } from "@/services/settingsStore";
 import { AddStaffDialog } from "@/features/shared/createForms";
 import { EMAIL_RE, PHONE_RE, dataErr } from "./ProfileCard";
+import { DEFAULT_WEEK, mapLinkProblem, weekProblem, weekText, type WeekHours } from "@/services/openingHours";
+import { OpeningHoursEditor } from "./OpeningHoursEditor";
 
 const STATUS_TONE: Record<StaffStatus, "ok" | "warn" | "danger" | "neutral"> = { Active: "ok", "On leave": "warn", Suspended: "danger", Left: "neutral" };
 
@@ -30,23 +32,31 @@ export function BranchProfileForm({ branch, compact = false }: { branch: Branch;
   const { showToast } = useApp();
   const contact = useReceiptProfile().branches[branch.id] ?? { address: "", phone: "" };
   const extra = useBranchProfile(branch.id);
-  const saved = { phone: contact.phone, address: contact.address, email: extra.email, hours: extra.hours, notes: extra.notes };
+  const saved = { phone: contact.phone, address: contact.address, email: extra.email, mapLink: extra.mapLink ?? "", notes: extra.notes };
+  const savedWeek = extra.week ?? DEFAULT_WEEK;
   const [form, setForm] = useState(saved);
+  const [week, setWeek] = useState<WeekHours>(savedWeek);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) => setForm((f) => ({ ...f, [k]: e.target.value }));
-  const dirty = (Object.keys(form) as (keyof typeof form)[]).some((k) => form[k].trim() !== saved[k]);
+  const weekDirty = JSON.stringify(week) !== JSON.stringify(savedWeek) || !extra.week;
+  const dirty = (Object.keys(form) as (keyof typeof form)[]).some((k) => form[k].trim() !== saved[k]) || weekDirty;
 
   const save = () => {
     const e: Record<string, string> = {};
     if (form.phone.trim() && !PHONE_RE.test(form.phone.trim())) e.phone = "Enter a valid phone number, e.g. 0803 123 4567.";
     if (form.email.trim() && !EMAIL_RE.test(form.email.trim())) e.email = "Enter a valid email address, e.g. abuja@example.com.";
+    const map = mapLinkProblem(form.mapLink);
+    if (map) e.mapLink = map;
+    const wk = weekProblem(week);
+    if (wk) e.week = wk;
     setErrors(e);
     if (Object.keys(e).length) return focusFirstError();
-    const clean = { phone: form.phone.trim(), address: form.address.trim(), email: form.email.trim(), hours: form.hours.trim(), notes: form.notes.trim() };
+    const clean = { phone: form.phone.trim(), address: form.address.trim(), email: form.email.trim(), mapLink: form.mapLink.trim(), notes: form.notes.trim() };
     updateBranchContact(branch.id, { phone: clean.phone, address: clean.address });
-    updateBranchProfile(branch.id, { email: clean.email, hours: clean.hours, notes: clean.notes });
-    const labels: Record<string, string> = { phone: "Phone", address: "Address", email: "Email", hours: "Opening hours", notes: "Note for staff" };
+    updateBranchProfile(branch.id, { email: clean.email, mapLink: clean.mapLink, notes: clean.notes, week, hours: weekText(week) });
+    const labels: Record<string, string> = { phone: "Phone", address: "Address", email: "Email", mapLink: "Google Maps link", notes: "Note for staff" };
     const changed = (Object.keys(clean) as (keyof typeof clean)[]).filter((k) => clean[k] !== saved[k]).map((k) => labels[k]);
+    if (weekDirty) changed.push(`Opening hours (${weekText(week)})`);
     logAudit({ category: "Settings", action: "Branch details updated", record: `${branch.name} branch (${branch.code})`, details: `Changed: ${changed.join(", ")}`, branchId: branch.id });
     setForm(clean);
     showToast(`${branch.name} branch details saved`);
@@ -100,10 +110,20 @@ export function BranchProfileForm({ branch, compact = false }: { branch: Branch;
           </span>
           <textarea value={form.address} onChange={set("address")} placeholder="Street, area, city" />
         </label>
-        <label className="field">
-          Opening hours
-          <input value={form.hours} onChange={set("hours")} placeholder="e.g. Mon–Sat 7:30am – 8:00pm" />
+        <label className={`field full ${fieldErrorProps(errors.mapLink).className}`} {...dataErr(errors.mapLink)}>
+          <span>
+            Google Maps link <small className="lg-muted st-optional">· required. PR agents send it to patients so they find the branch</small>
+          </span>
+          <input type="url" inputMode="url" value={form.mapLink} onChange={set("mapLink")} placeholder="https://maps.app.goo.gl/..." />
+          <FieldError msg={errors.mapLink} />
+          {!errors.mapLink && <small className="hint">In Google Maps, open the branch, tap Share, then Copy link, and paste it here.</small>}
         </label>
+        <div className="field full">
+          <span>
+            Opening hours <small className="lg-muted st-optional">· in the message patients get, and on the PR agents' app</small>
+          </span>
+          <OpeningHoursEditor value={week} onChange={setWeek} error={errors.week} />
+        </div>
         <label className="field">
           <span>
             Note for staff <small className="lg-muted st-optional">· optional</small>
@@ -117,6 +137,7 @@ export function BranchProfileForm({ branch, compact = false }: { branch: Branch;
             variant="secondary"
             onClick={() => {
               setForm(saved);
+              setWeek(savedWeek);
               setErrors({});
             }}
           >

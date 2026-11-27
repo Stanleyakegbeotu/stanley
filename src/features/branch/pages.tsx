@@ -8,6 +8,7 @@ import { Badge, Button, PageHeader } from "@/shared/ui/controls";
 import { BRANCH_NAV_ITEMS, canOpenBranchPage } from "@/shell/navigation";
 import { can, usePermissions } from "@/services/permissions";
 import { useBranches } from "@/services/org";
+import { BranchMarketingPage } from "@/features/marketing/MarketingPage";
 import { BranchAnalysisPage, BranchDraftsPage, BranchInventoryPage, BranchPrPage, BranchRecordsPage } from "./BranchPages";
 import { StaffBranchView } from "@/features/staff/StaffWorkspace";
 import { AddStaffDialog } from "@/features/shared/createForms";
@@ -16,6 +17,8 @@ import { ExpensesPage } from "@/features/expenses/ExpensesPage";
 import { BranchAuditPage, BranchSettingsPage, BranchTrashPage } from "@/features/settings/BranchSettings";
 import { BranchHome } from "./BranchHome";
 import { AssistantPage } from "@/features/assistant/AssistantPage";
+import { InboxPage } from "@/features/inbox/InboxPage";
+import { IssueReportsPage } from "@/features/issues/IssueReportsPage";
 import { BillingWorkspace } from "@/features/billing/BillingWorkspace";
 
 /** Branch Staff Management — the same staff list and profiles as the Company Admin's page, for this branch only. */
@@ -83,6 +86,8 @@ export function BranchWorkspacePage({ branchId, page }: { branchId: string; page
       return <BranchInventoryPage key={branch.id} branch={branch} initialFilter={f ?? "all"} />;
     case "pr":
       return <BranchPrPage key={branch.id} branch={branch} />;
+    case "marketing":
+      return <BranchMarketingPage key={branch.id} branch={branch} />;
     case "analysis":
       return <BranchAnalysisPage branch={branch} />;
     case "expenses":
@@ -99,6 +104,10 @@ export function BranchWorkspacePage({ branchId, page }: { branchId: string; page
       return <AssistantPage mode="intelligence" base={`/branch/${branch.id}`} />;
     case "support":
       return <AssistantPage mode="issues" base={`/branch/${branch.id}`} />;
+    case "messages":
+      return <InboxPage />;
+    case "reports":
+      return <IssueReportsPage branchId={branch.id} />;
     default:
       return <BranchHome branch={branch} />;
   }

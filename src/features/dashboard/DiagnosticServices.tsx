@@ -103,7 +103,7 @@ export function DiagnosticServicesSection({ branchIds, range }: { branchIds: str
                       {formatCount(r.count)} performed · {r.category}
                     </small>
                     <span className="dc-mini" aria-hidden="true">
-                      <motion.i style={{ width: `${top[0].count ? Math.max(4, (r.count / top[0].count) * 100) : 0}%` }} initial={m.reduced ? false : { scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ duration: 0.7, delay: 0.2 + i * 0.05 }} />
+                      <motion.i style={{ width: `${top[0].count ? Math.max(4, (r.count / top[0].count) * 100) : 0}%` }} initial={m.reduced ? false : { scaleX: 0 }} whileInView={{ scaleX: 1 }} viewport={{ once: true, amount: 0.3 }} transition={{ duration: 0.7, delay: 0.2 + i * 0.05 }} />
                     </span>
                   </span>
                   <span className="dc-amt-col">

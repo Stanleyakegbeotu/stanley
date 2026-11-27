@@ -13,6 +13,7 @@ import { BranchPerformanceSection } from "@/features/dashboard/Sections";
 import { DiagnosticServicesSection } from "@/features/dashboard/DiagnosticServices";
 import { ReferralPerformanceSection } from "@/features/dashboard/ReferralPerformance";
 import { useDashboardData } from "@/features/dashboard/useDashboardData";
+import { CompanyReferralsSection } from "@/features/referrals/IncomingReferrals";
 
 /**
  * Company Admin Dashboard.
@@ -23,6 +24,7 @@ import { useDashboardData } from "@/features/dashboard/useDashboardData";
  *
  * Section order (approved):
  *  1. Quick Stats                    — six KPI cards
+ *  1b. Incoming referrals             — each branch's referrals folder (owner, 2026-11-26)
  *  2. Quick Actions                  — not implemented yet (no existing component)
  *  3. Daily Payment Summary          — payment-method + collections-by-branch cards
  *  4. Branch Performance
@@ -61,6 +63,9 @@ export function CompanyDashboard() {
         demo
       />
       <KpiGrid summary={summary} prior={prior} />
+
+      {/* 1b. Incoming referrals: how fast each branch attends to referred patients */}
+      {branchIds.length > 0 && <CompanyReferralsSection branchIds={branchIds} />}
 
       {/* 2. Quick Actions — no existing implementation; intentionally not created. */}
 

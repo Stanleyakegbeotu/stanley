@@ -39,7 +39,7 @@ export function accessFor(role: string): Access {
     payments: "all",
     services: "all",
     hospitals: "all",
-    agents: can(role, "referral.commission") ? "all" : ["performance", "patients"],
+    agents: can(role, "referral.commission") ? "all" : ["performance", "patients", "monitor"],
     ...(can(role, "reports.revenue") ? { revenue: "all" as const } : {}),
     ...(can(role, "reports.staff") ? { staff: "all" as const } : {}),
   };

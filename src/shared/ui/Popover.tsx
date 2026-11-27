@@ -64,12 +64,23 @@ export function Popover({
       }
       if (matchWidth) s.minWidth = r.width;
       if (width) s.width = width;
+      // Never past the window's edges (owner, 2026-11-26): a panel wider than the room left of its edge slides back in.
+      const w = Math.min(window.innerWidth - 24, Math.max(panel.current?.offsetWidth ?? 0, width ?? 0, matchWidth ? r.width : 0));
+      if (typeof s.left === "number") s.left = Math.max(12, Math.min(s.left, window.innerWidth - 12 - w));
+      if (typeof s.right === "number") s.right = Math.max(12, Math.min(s.right, window.innerWidth - 12 - w));
+      s.maxWidth = window.innerWidth - 24;
       setStyle(s);
     };
     update();
+    // Follow the anchor while it changes size (e.g. the header search opening from its icon) and once the panel has its size.
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => update()) : null;
+    if (anchor.current) ro?.observe(anchor.current);
+    const raf = window.requestAnimationFrame(update);
     window.addEventListener("resize", update);
     window.addEventListener("scroll", update, true);
     return () => {
+      ro?.disconnect();
+      window.cancelAnimationFrame(raf);
       window.removeEventListener("resize", update);
       window.removeEventListener("scroll", update, true);
     };

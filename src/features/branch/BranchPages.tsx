@@ -28,6 +28,7 @@ import { PRView } from "@/features/shared/views";
 import { InventoryCatalog, type ServiceActivity } from "@/features/inventory/InventoryCatalog";
 import { PatientDirectory } from "@/features/patients/PatientDirectory";
 import { BillingDrafts } from "@/features/billing/BillingWorkspace";
+import { PayoutMonthsSection } from "@/features/pr/AgentMonitor";
 
 export function BranchRecordsPage({ branch }: { branch: Branch }) {
   const { route } = useApp();
@@ -132,6 +133,8 @@ export function BranchPrPage({ branch }: { branch: Branch }) {
         }
       />
       <PRView scope={[branch.id]} />
+      {/* Monthly payouts: the last section (owner, 2026-11-27). The monitor and marketers are on the Marketing page. */}
+      <PayoutMonthsSection branchId={branch.id} />
       {adding !== null && <AddAgentDialog key={adding} open onClose={() => setAdding(null)} hospitals={directory.map((h) => ({ key: h.key, count: h.agentCount, raw: h.rawVariants }))} />}
     </AnimatedPage>
   );

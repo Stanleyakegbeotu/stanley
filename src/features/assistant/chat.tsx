@@ -65,7 +65,7 @@ export function suggestionsFor(mode: Mode, kind: "admin" | "manager" | "staff"):
     ];
   return [
     { icon: BarChart3, title: kind === "admin" ? "Analyse branch performance" : "Analyse branch performance", text: kind === "admin" ? "Compare revenue, payments and patients across branches." : "Revenue, payments and patients for your branch.", prompt: kind === "admin" ? "Which branch leads revenue?" : "How is revenue?" },
-    { icon: FileText, title: "Prepare a business report", text: kind === "admin" ? "Open Reports to preview, print or download reports." : "Open Analysis to preview, print or download reports.", prompt: "How do I make a report?" },
+    { icon: FileText, title: "Prepare a business report", text: kind === "admin" ? "Open Analysis to preview, print or download reports." : "Open Analysis to preview, print or download reports.", prompt: "How do I make a report?" },
     { icon: Wallet, title: "Check collections", text: "How much has been paid against what was billed.", prompt: "How are collections?" },
     { icon: AlertCircle, title: "Find outstanding balances", text: "Where unpaid balances are building up.", prompt: "Where are balances building up?" },
   ];

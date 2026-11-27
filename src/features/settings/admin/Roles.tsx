@@ -78,8 +78,8 @@ export function RolesSection() {
                       const on = can(r, p.id);
                       return (
                         <td key={r} className="center">
-                          {p.adminOnly ? (
-                            <span className="sc-perm is-locked" title="Company Admin only — can't be given to branch roles">
+                          {p.adminOnly || (p.managersOnly && r === "Front Desk") ? (
+                            <span className="sc-perm is-locked" title={p.adminOnly ? "Company Admin only — can't be given to branch roles" : "Branch Manager and Company Admin only — the front desk are staff themselves"}>
                               <Lock size={13} />
                             </span>
                           ) : (

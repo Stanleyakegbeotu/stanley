@@ -23,6 +23,7 @@ import { FinanceWorkspace, type LogType } from "@/features/finance/FinanceWorksp
 import { ReportsHome } from "@/features/reports/ReportsHome";
 import { AnalysisPanel } from "@/features/reports/AnalysisPanel";
 import { StaffBranchView } from "@/features/staff/StaffWorkspace";
+import { PayoutMonthsSection } from "@/features/pr/AgentMonitor";
 import { AuditLogView, TrashLogView } from "@/features/admin/AdminLogs";
 import { managerOf } from "@/data/userRecords";
 import { financeTotals } from "@/services/finance";
@@ -172,7 +173,7 @@ function BranchCard({ branchId, periodText, onOpen }: { branchId: string; period
           </span>
           <strong className="num">{s ? <CountUp value={paid} format={(n) => formatMoney(n, c)} /> : "—"}</strong>
           <div className="bcard-pay-bar" aria-hidden="true">
-            <motion.i style={{ width: `${Math.max(billed > 0 ? 2 : 0, collected)}%` }} initial={m.reduced ? false : { scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ duration: 0.8, delay: 0.2 }} />
+            <motion.i style={{ width: `${Math.max(billed > 0 ? 2 : 0, collected)}%` }} initial={m.reduced ? false : { scaleX: 0 }} whileInView={{ scaleX: 1 }} viewport={{ once: true, amount: 0.3 }} transition={{ duration: 0.8, delay: 0.2 }} />
           </div>
           <small>{billed > 0 ? `${Math.round(collected)}% of ${formatMoney(billed, c)} billed in this period` : "Nothing billed in this period"}</small>
         </div>
@@ -403,6 +404,7 @@ export function PRPage() {
             </nav>
           )}
           <PRView scope={[branch.id]} />
+          <PayoutMonthsSection branchId={branch.id} />
         </>
       )}
       {adding !== null && <AddAgentDialog key={adding} open onClose={() => setAdding(null)} hospitals={directory.map((h) => ({ key: h.key, count: h.agentCount, raw: h.rawVariants }))} />}
@@ -817,14 +819,14 @@ export function ReportsView({ ids, basePath }: { ids: string[]; basePath: string
 }
 
 /*
- * Reports: one card per report; each opens the report builder pop-up
+ * Analysis (was "Reports" until 2026-11-26; Reports is now complaints and issues): one card per report; each opens the report builder pop-up
  * (choose → preview → print / download PDF / export spreadsheet).
  */
 export function ReportsPage() {
   const { scope, scopeLabel } = useScope();
   return (
     <AnimatedPage>
-      <PageHero eyebrow={`Reports & exports · ${scopeLabel}`} title="Reports" period={false} stats="reports" />
+      <PageHero eyebrow={`Analysis, reports & exports · ${scopeLabel}`} title="Analysis" period={false} stats="reports" />
       <AnalysisPanel ids={scope ?? ACTIVE_BRANCHES.map((b) => b.id)} level="admin" scopeLabel={scopeLabel} />
       <ReportsHome initialBranch={scope?.[0]} />
     </AnimatedPage>

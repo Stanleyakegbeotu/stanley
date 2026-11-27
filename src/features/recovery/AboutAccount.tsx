@@ -79,7 +79,7 @@ export function AboutAccountSection() {
   const perms = PERMISSION_GROUPS.flatMap((g) => g.perms.map((p) => ({ ...p, group: g.label })));
   const yes = perms.filter((p) => can(user.role, p.id));
   const no = perms.filter((p) => !can(user.role, p.id));
-  const whoDoes = (p: (typeof perms)[number]) => (p.adminOnly ? "Company Admin only" : kind === "staff" ? `Your ${MANAGER_ROLE} (or the Company Admin)` : "The Company Admin can give this to your role");
+  const whoDoes = (p: (typeof perms)[number]) => (p.adminOnly ? "Company Admin only" : p.managersOnly ? `${MANAGER_ROLE} and Company Admin only` : kind === "staff" ? `Your ${MANAGER_ROLE} (or the Company Admin)` : "The Company Admin can give this to your role");
 
   return (
     <article className="ab-doc" id="about-account">

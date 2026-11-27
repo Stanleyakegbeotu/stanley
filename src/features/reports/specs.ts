@@ -12,7 +12,8 @@ import { CATALOGUE_INVENTORY } from "@/data/catalogueRules";
 import { DAILY, DATA_START, addDays, diffDays, isoDate } from "@/data/demo/generator";
 import { ledger, openBalances, patientVisits, type LedgerEntry, type PatientVisit } from "@/data/demo/dailyLines";
 import { LEGACY_BRANCH_ID, buildHospitalDirectory, hasPhone, hospitalKey } from "@/data/legacy";
-import type { AgentRecord } from "@/data/userRecords";
+import { netPay, usesApp, type AgentRecord, type StaffRecord } from "@/data/userRecords";
+import { STATUS_HINT as AGENT_STATUS_HINT, STATUS_LABEL as AGENT_STATUS_LABEL, agentHealth, checkUpsNow, type AgentHealth, type AgentStatus } from "@/services/agentMonitor";
 import type { Currency, DateRange } from "@/data/types";
 import { EXPENSE_CATEGORIES, PAYMENT_METHODS } from "@/data/types";
 import { financeTotals } from "@/services/finance";
@@ -36,6 +37,8 @@ export interface ReportParams {
 
 export interface ReportCtx {
   agents: readonly AgentRecord[];
+  /** Staff on record (Staff Management), for the staff directory and salary reports. */
+  staff?: readonly StaffRecord[];
   /** Owner rule: only the Company Admin sees net profit / margin — reports for anyone else leave them out. */
   hideProfit?: boolean;
 }
@@ -577,6 +580,7 @@ const AGENTS: ReportSpec = {
     { id: "payout", label: "Monthly commission payout", description: "What to pay each agent for a month, grouped by bank (A–Z) with bank name, account name and number, phone, patients, rate and commission.", periodMode: "month" },
     { id: "performance", label: "Agent performance", description: "One line per agent with the columns you choose." },
     { id: "patients", label: "Agents with referred patients", description: "Each agent followed by the patients they referred: date, tests, billed, paid and commission." },
+    { id: "monitor", label: "Activity monitor and visit plan", description: "Who is slipping, gone quiet, inactive or growing, with what to do, the last check-up, and a visit plan by hospital for the marketers.", dated: false },
   ],
   columns: { performance: AGENT_COLUMNS, payout: PAYOUT_COLUMNS },
   selects: [
@@ -604,6 +608,7 @@ const AGENTS: ReportSpec = {
   ],
   suggestPaper: (p) => (p.variant === "patients" || p.variant === "payout" ? { size: "A4", orientation: "landscape" } : paperFor(p.columns.length)),
   build(p, ctx) {
+    if (p.variant === "monitor") return agentMonitorDoc(p, ctx);
     if (p.variant === "payout") return buildPayout(p, ctx);
     const list = agentAggregates(p, ctx);
     const blocks: Block[] = [];
@@ -1028,20 +1033,27 @@ const PAYMENTS: ReportSpec = {
 
 const STAFF: ReportSpec = {
   id: "staff",
-  title: "Staff activity report",
+  title: "Staff report",
   short: "Staff",
-  tagline: "Front-desk activity by role",
+  tagline: "Staff, salaries & activity",
   icon: UsersRound,
-  description: "Front-desk activity by role. Named staff reports arrive with Staff Management.",
-  guide: "Staff accounts are not set up yet, so this report groups work by role (receptionist, branch manager). Named, per-person reports will be added when Staff Management is built.",
+  description: "Every staff member on record, their monthly salaries and bank details, and front-desk activity by role.",
+  guide: "Staff directory and Salaries & bank details list everyone in Staff Management, including staff who don't use STANLEY (radiographers, lab, security …). Salaries are the monthly pay set on each profile, grouped by bank for paying. Activity reports group front-desk work by role.",
   variants: [
+    { id: "salaries", label: "Salaries & bank details", description: "Monthly pay for every staff member: salary, allowances, deductions and net pay, with bank name, account name and number. Totals per bank.", dated: false },
+    { id: "directory", label: "Staff directory", description: "Everyone who works at the branch: role, department, whether they use STANLEY, status, start date and contacts.", dated: false },
     { id: "roles", label: "Activity by role", description: "Visits processed and money collected at the front desk, per role." },
     { id: "daily", label: "Daily front-desk activity", description: "One line per day: visits processed by each role and money collected." },
   ],
-  suggestPaper: () => ({ size: "A4", orientation: "portrait" }),
-  build(p) {
+  options: [
+    { id: "left", label: "Include staff who have left", help: "Adds people whose status is Left (kept for history).", default: false, variants: ["salaries", "directory"] },
+    { id: "bankSummary", label: "Add a total per bank at the end", help: "How much to send to each bank, handy when paying salaries in bulk.", default: true, variants: ["salaries"] },
+  ],
+  suggestPaper: (p) => ({ size: "A4", orientation: p.variant === "salaries" || p.variant === "directory" ? "landscape" : "portrait" }),
+  build(p, ctx) {
     const ids = branchIdsOf(p);
     const c0 = curOf(ids[0]);
+    if (p.variant === "salaries" || p.variant === "directory") return staffRecordsDoc(p, ctx, ids);
     const visits = patientVisits(ids, p.range);
     const blocks: Block[] = [];
     const roles = ["Receptionist", "Branch Manager"] as const;
@@ -1093,6 +1105,76 @@ const STAFF: ReportSpec = {
     return { title: "Staff activity report", subtitle: `${STAFF.variants.find((v) => v.id === p.variant)?.label} · ${branchLabel(p)} · ${rangeLabel(p.range)}`, meta: baseMeta(STAFF, p), blocks, footnote: FOOT_DEMO, filename: fileName(STAFF, p) };
   },
 };
+
+/** PR agent activity monitor and visit plan (owner, 2026-11-26), from services/agentMonitor. */
+function agentMonitorDoc(p: ReportParams, ctx: ReportCtx): ReportDoc {
+  const ids = branchIdsOf(p);
+  const list = ids.flatMap((id) => agentHealth(id, ctx.agents, checkUpsNow()));
+  const blocks: Block[] = [];
+  const n = (s: AgentStatus) => list.filter((a) => a.status === s).length;
+  blocks.push({ kind: "summary", items: [{ label: "Check up on now", value: formatCount(list.filter((a) => a.due).length), tone: "bad" }, { label: "Slipping", value: formatCount(n("slipping")) }, { label: "Gone quiet", value: formatCount(n("quiet")) }, { label: "Inactive", value: formatCount(n("inactive")) }, { label: "Growing or top", value: formatCount(n("rising") + n("top")) }] });
+  const cols: Column[] = [{ key: "a", label: "PR agent", weight: 1.3 }, { key: "h", label: "Hospital", weight: 1 }, { key: "ph", label: "Phone", weight: 0.9 }, { key: "l", label: "Last 4 weeks", align: "right", weight: 0.7 }, { key: "p", label: "4 weeks before", align: "right", weight: 0.7 }, { key: "d", label: "Last referral", weight: 0.8 }, { key: "w", label: "What to do", weight: 2.2 }, { key: "c", label: "Last check-up", weight: 1.1 }];
+  const row = (a: AgentHealth): Cell[] => [txt(a.agent.name, { b: true }), txt(a.hospital), txt(hasPhone(a.agent.phone) ? a.agent.phone : "—", { tone: hasPhone(a.agent.phone) ? undefined : "muted" }), count(a.last28), count(a.prev28), txt(a.lastAt ? day(a.lastAt) : "Never", { tone: a.lastAt ? undefined : "muted" }), txt(a.action), txt(a.lastCheck ? `${a.lastCheck.kind}, ${day(new Date(a.lastCheck.at))}: ${a.lastCheck.outcome}` : "None yet", { tone: a.lastCheck ? undefined : "muted" })];
+  // The visit plan: agents to see now, grouped by hospital (most agents first).
+  const due = list.filter((a) => a.due);
+  const byHosp = new Map<string, AgentHealth[]>();
+  for (const a of due) byHosp.set(a.hospital, [...(byHosp.get(a.hospital) ?? []), a]);
+  for (const [h, agents] of [...byHosp.entries()].sort((x, y) => y[1].length - x[1].length)) blocks.push({ kind: "table", title: `Visit plan · ${h}`, subtitle: `${agents.length} agent${agents.length === 1 ? "" : "s"} to see`, columns: cols, rows: agents.map(row) });
+  if (!due.length) blocks.push({ kind: "note", text: "Nobody to check up on now: every slipping or quiet agent has a recent check-up." });
+  for (const s of ["inactive", "never", "rising", "top"] as AgentStatus[]) {
+    const part = list.filter((a) => a.status === s && !a.due);
+    if (part.length) blocks.push({ kind: "table", title: `${AGENT_STATUS_LABEL[s]} · ${formatCount(part.length)}`, subtitle: AGENT_STATUS_HINT[s], columns: cols, rows: part.slice(0, 200).map(row) });
+  }
+  blocks.push({ kind: "note", text: "Log each visit or call in PR Management (PR agent monitor) so the branch knows; the agent leaves the check-up list until the next date." });
+  return { title: "PR agent activity monitor", subtitle: `${branchLabel(p)} · ${day(new Date())}`, meta: baseMeta(AGENTS, p), blocks, footnote: "Last 4 weeks compared with the 4 weeks before. Statuses: services/agentMonitor.", filename: fileName(AGENTS, p) };
+}
+
+/** Staff directory and Salaries & bank details (owner, 2026-11-26): everyone on record in Staff Management. */
+function staffRecordsDoc(p: ReportParams, ctx: ReportCtx, ids: string[]): ReportDoc {
+  const c0 = curOf(ids[0]!);
+  const multi = ids.length > 1;
+  const people = (ctx.staff ?? [])
+    .filter((x) => ids.includes(x.branchId) && (p.options.left || x.status !== "Left"))
+    .sort((a, b) => (multi ? a.branchId.localeCompare(b.branchId) : 0) || a.name.localeCompare(b.name));
+  const bcol: Column[] = multi ? [{ key: "br", label: "Branch", weight: 0.8 }] : [];
+  const bcell = (x: StaffRecord): Cell[] => (multi ? [txt(getBranch(x.branchId)?.name ?? x.branchId)] : []);
+  const blocks: Block[] = [];
+  const month = new Date().toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+  if (p.variant === "directory") {
+    blocks.push({ kind: "summary", items: [{ label: "Staff", value: formatCount(people.length) }, { label: "Use STANLEY", value: formatCount(people.filter(usesApp).length) }, { label: "Records only", value: formatCount(people.filter((x) => !usesApp(x)).length) }, { label: "Active", value: formatCount(people.filter((x) => x.status === "Active").length) }] });
+    blocks.push({
+      kind: "table",
+      title: "Staff directory",
+      columns: [{ key: "n", label: "Name", weight: 1.3 }, { key: "id", label: "Staff ID", weight: 0.7 }, ...bcol, { key: "r", label: "Role", weight: 1.2 }, { key: "d", label: "Department", weight: 0.9 }, { key: "a", label: "Uses STANLEY", weight: 0.7 }, { key: "s", label: "Status", weight: 0.6 }, { key: "e", label: "Employment", weight: 0.7 }, { key: "st", label: "Started", weight: 0.8 }, { key: "ph", label: "Phone", weight: 1 }, { key: "em", label: "Email", weight: 1.3 }],
+      rows: people.map((x) => [txt(x.name, { b: true }), txt(x.id), ...bcell(x), txt(x.role), txt(x.department ?? "—"), txt(usesApp(x) ? "Yes" : "No"), txt(x.status, { tone: x.status === "Active" ? "good" : undefined }), txt(x.employment), txt(x.startDate ? day(new Date(`${x.startDate}T00:00:00`)) : "—"), txt(x.phone || "—", { tone: x.phone ? undefined : "muted" }), txt(x.email || "—", { tone: x.email ? undefined : "muted" })]),
+      empty: "No staff on record.",
+    });
+    return { title: "Staff directory", subtitle: `${branchLabel(p)} · as of ${day(new Date())}`, meta: baseMeta(STAFF, p), blocks, footnote: "From Staff Management. Includes staff who do not use STANLEY (records only).", filename: fileName(STAFF, p) };
+  }
+  const paid = people.filter((x) => x.pay);
+  const sumOf = (list: readonly StaffRecord[], k: "salary" | "allowances" | "deductions" | "net") => sum([...list], (x) => (k === "net" ? netPay(x.pay) : (x.pay?.[k] ?? 0)));
+  blocks.push({ kind: "summary", items: [{ label: "Staff paid", value: formatCount(paid.length) }, { label: "Basic salaries", value: formatMoney(sumOf(paid, "salary"), c0) }, { label: "Allowances", value: formatMoney(sumOf(paid, "allowances"), c0) }, { label: "Deductions", value: formatMoney(sumOf(paid, "deductions"), c0) }, { label: "Net pay to send", value: formatMoney(sumOf(paid, "net"), c0) }] });
+  const cols: Column[] = [{ key: "n", label: "Name", weight: 1.3 }, ...bcol, { key: "r", label: "Role", weight: 1.1 }, { key: "b", label: "Bank", weight: 0.9 }, { key: "an", label: "Account name", weight: 1.2 }, { key: "ac", label: "Account number", weight: 1 }, { key: "s", label: "Salary", align: "right", weight: 0.9 }, { key: "al", label: "Allowances", align: "right", weight: 0.9 }, { key: "de", label: "Deductions", align: "right", weight: 0.9 }, { key: "ne", label: "Net pay", align: "right", weight: 0.9 }];
+  // Grouped by bank (A–Z), like the PR commission payout, so each bank's transfers are together.
+  const byBank = [...paid].sort((a, b) => (a.bank?.bankName ?? "~").localeCompare(b.bank?.bankName ?? "~") || a.name.localeCompare(b.name));
+  blocks.push({
+    kind: "table",
+    title: `Salaries for ${month}`,
+    subtitle: "Grouped by bank",
+    columns: cols,
+    rows: byBank.map((x) => [txt(x.name, { b: true }), ...bcell(x), txt(x.role), txt(x.bank?.bankName ?? "No bank details", { tone: x.bank ? undefined : "bad" }), txt(x.bank?.accountName ?? "—"), txt(x.bank?.accountNumber ?? "—"), money(x.pay!.salary, c0), money(x.pay!.allowances ?? 0, c0), money(x.pay!.deductions ?? 0, c0), money(netPay(x.pay), c0, { b: true })]),
+    total: [txt("Total", { b: true }), ...Array.from({ length: cols.length - 5 }, () => txt("")), money(sumOf(paid, "salary"), c0), money(sumOf(paid, "allowances"), c0), money(sumOf(paid, "deductions"), c0), money(sumOf(paid, "net"), c0)],
+    empty: "No salaries on record. Add them on each staff profile (Staff Management → Pay & bank).",
+  });
+  if (p.options.bankSummary && paid.length) {
+    const banks = new Map<string, StaffRecord[]>();
+    for (const x of paid) banks.set(x.bank?.bankName ?? "No bank details", [...(banks.get(x.bank?.bankName ?? "No bank details") ?? []), x]);
+    blocks.push({ kind: "table", title: "Total per bank", columns: [{ key: "b", label: "Bank", weight: 1.4 }, { key: "c", label: "Staff", align: "right" }, { key: "t", label: "Net pay to send", align: "right", weight: 1.2 }], rows: [...banks.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([b, list]) => [txt(b, { b: true }), count(list.length), money(sumOf(list, "net"), c0)]), total: [txt("Total", { b: true }), count(paid.length), money(sumOf(paid, "net"), c0)] });
+  }
+  const missing = people.filter((x) => !x.pay || !x.bank);
+  if (missing.length) blocks.push({ kind: "note", text: `Missing pay or bank details: ${missing.map((x) => x.name).join(", ")}. Add them on their profiles in Staff Management.` });
+  return { title: "Salaries & bank details", subtitle: `${branchLabel(p)} · ${month}`, meta: baseMeta(STAFF, p), blocks, footnote: "Monthly pay as set on each staff profile. Confidential: for the Company Admin and the Branch Manager.", filename: fileName(STAFF, p) };
+}
 
 export const REPORTS: ReportSpec[] = [REVENUE, AGENTS, HOSPITALS, SERVICES_SPEC, PAYMENTS, STAFF];
 export const reportById = (id: string | null) => REPORTS.find((r) => r.id === id);

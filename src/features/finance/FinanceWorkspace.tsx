@@ -544,7 +544,7 @@ function ProfitBars({
               className={v < 0 ? "is-loss" : ""}
               style={v >= 0 ? { bottom: `${100 - zero}%`, height: `${(v / span) * 100}%`, transformOrigin: "bottom" } : { top: `${zero}%`, height: `${(-v / span) * 100}%`, transformOrigin: "top" }}
               initial={reduced ? false : { scaleY: 0 }}
-              animate={{ scaleY: 1 }}
+              whileInView={{ scaleY: 1 }} viewport={{ once: true, amount: 0.3 }}
               transition={{ duration: 0.5, delay: reduced ? 0 : 0.05 + i * 0.012 }}
             />
             {i % tickEvery === 0 && <small>{labels[i]}</small>}

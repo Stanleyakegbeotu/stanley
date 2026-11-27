@@ -9,14 +9,25 @@
  *
  * No staff records were in the legacy export, so people are added here (they
  * last for the session until the database is connected). Nothing is invented.
+ *
+ * Staff records (owner, 2026-11-26): everyone who works at the branch is on
+ * record, not only the people who use STANLEY (Branch Manager, Front Desk).
+ * Radiographers, lab scientists, security, cleaners … are "records only":
+ * they never sign in. The Company Admin and the Branch Manager keep each
+ * person's job, salary (allowances and deductions) and bank details, see them
+ * on the profile's Pay & bank tab, download the list, and make the salary
+ * report in Analysis.
  */
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { BadgeCheck, Briefcase, CalendarDays, Crown, KeyRound, Mail, MapPin, Pencil, Phone, Plus, ShieldCheck, Trash2, UserRound, UserRoundCog, Users, X } from "lucide-react";
+import { BadgeCheck, Briefcase, CalendarDays, Crown, Download, FileWarning, KeyRound, Landmark, Mail, MapPin, Pencil, Phone, Plus, ShieldCheck, Trash2, UserRound, UserRoundCog, Users, Wallet, X } from "lucide-react";
 import { useApp } from "@/app/AppState";
 import { getBranch } from "@/data/company";
-import { EMPLOYMENT_TYPES, MANAGER_ROLE, STAFF_ROLES, STAFF_STATUSES, isManager, managerOf, type StaffRecord, type StaffStatus } from "@/data/userRecords";
+import { DEPARTMENTS, EMPLOYMENT_TYPES, MANAGER_ROLE, RECORD_ROLES, STAFF_ROLES, STAFF_STATUSES, isManager, managerOf, netPay, usesApp, type StaffRecord, type StaffStatus } from "@/data/userRecords";
+import { formatMoney } from "@/shared/format";
+import { Modal } from "@/shared/ui/Modal";
+import { downloadFile } from "@/features/settings/admin/ui";
 import { Reveal, useMotionPreset } from "@/shared/motion";
 import { formatCount } from "@/shared/format";
 import { Badge, Button, EmptyState, SearchInput, Segmented, SelectMenu } from "@/shared/ui/controls";
@@ -25,6 +36,9 @@ import { FieldError, focusFirstError } from "@/shared/ui/FieldError";
 import { NAME_INPUT_PROPS, nameChange } from "@/shared/nameCase";
 import { MoveToTrashDialog } from "@/features/admin/AdminLogs";
 import { resolvePhoto, useSettings } from "@/services/settingsStore";
+import { staffKey, useAccountAccess } from "@/services/accountAccess";
+import { queriesOf, useStaffQueries } from "@/services/staffQueries";
+import { AccountAccessPanel, QueriesPanel } from "./StaffQueries";
 
 export const staffInitials = (name: string) =>
   name
@@ -58,8 +72,28 @@ function StaffFace({ s }: { s: StaffRecord }) {
 
 /* ─────────────── Branch view ─────────────── */
 
+/** Can this person see salaries and bank details? (Company Admin and Branch Manager.) */
+export const useSeesPay = () => {
+  const { user } = useApp();
+  return user.kind === "admin" || user.kind === "manager";
+};
+const money = (n: number) => formatMoney(n, "NGN");
+
+/** The staff list as a spreadsheet (CSV), with pay and bank details for those allowed to see them. */
+function downloadStaff(list: StaffRecord[], branchName: string, withPay: boolean) {
+  const cell = (v: string | number | undefined) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const head = ["Staff ID", "Name", "Role", "Department", "Uses STANLEY", "Status", "Employment", "Start date", "Phone", "Email", "Address", ...(withPay ? ["Monthly salary", "Allowances", "Deductions", "Net pay", "Bank", "Account name", "Account number"] : [])];
+  const rows = list.map((p) => [p.id, p.name, p.role, p.department, usesApp(p) ? "Yes" : "No (record only)", p.status, p.employment, p.startDate, p.phone, p.email, p.address, ...(withPay ? [p.pay?.salary, p.pay?.allowances, p.pay?.deductions, p.pay ? netPay(p.pay) : "", p.bank?.bankName, p.bank?.accountName, p.bank?.accountNumber] : [])]);
+  downloadFile(`staff-${branchName.toLowerCase().replace(/\s+/g, "-")}-${new Date().toISOString().slice(0, 10)}.csv`, [head, ...rows].map((r) => r.map(cell).join(",")).join("\n"), "text/csv");
+}
+
 export function StaffBranchView({ branchId, onAdd }: { branchId: string; onAdd: (role?: string) => void }) {
+  const access = useAccountAccess();
+  const queries = useStaffQueries();
   const { staff } = useApp();
+  const seesPay = useSeesPay();
+  const [who, setWho] = useState<"all" | "app" | "records">("all");
+  const [recording, setRecording] = useState(false);
   const m = useMotionPreset();
   const branch = getBranch(branchId);
   const [q, setQ] = useState("");
@@ -72,7 +106,9 @@ export function StaffBranchView({ branchId, onAdd }: { branchId: string; onAdd: 
   const team = people.filter((s) => s.id !== manager?.id);
   const current = people.filter((s) => s.status !== "Left");
   const term = q.trim().toLowerCase();
-  const shown = team.filter((s) => (role === "all" || s.role === role) && (status === "all" || s.status === status) && (!term || `${s.name} ${s.role} ${s.phone} ${s.email} ${s.id}`.toLowerCase().includes(term)));
+  const shown = team.filter((s) => (who === "all" || (who === "app") === usesApp(s)) && (role === "all" || s.role === role) && (status === "all" || s.status === status) && (!term || `${s.name} ${s.role} ${s.department ?? ""} ${s.phone} ${s.email} ${s.id}`.toLowerCase().includes(term)));
+  const roles = [...new Set(team.map((s) => s.role))].sort();
+  const payroll = current.reduce((n, s) => n + netPay(s.pay), 0);
   const open = viewing ? staff.find((s) => s.id === viewing) : undefined;
 
   return (
@@ -80,9 +116,11 @@ export function StaffBranchView({ branchId, onAdd }: { branchId: string; onAdd: 
       <SummaryChips
         items={[
           { label: "Branch manager", icon: Crown, value: manager ? manager.name : "Not assigned", caption: manager ? `${manager.status} · since ${longDate(manager.startDate)}` : "Add the head of this branch" },
-          { label: "Staff", icon: Users, value: formatCount(current.length), caption: `${formatCount(current.filter((s) => !isManager(s)).length)} report to the manager` },
-          { label: "Active", icon: BadgeCheck, value: formatCount(people.filter((s) => s.status === "Active").length), caption: "Working now" },
-          { label: "Away", icon: CalendarDays, value: formatCount(people.filter((s) => s.status === "On leave" || s.status === "Suspended").length), caption: `${formatCount(people.filter((s) => s.status === "On leave").length)} on leave · ${formatCount(people.filter((s) => s.status === "Suspended").length)} suspended` },
+          { label: "Staff", icon: Users, value: formatCount(current.length), caption: `${formatCount(current.filter(usesApp).length)} use STANLEY · ${formatCount(current.filter((s) => !usesApp(s)).length)} records only` },
+          { label: "Active", icon: BadgeCheck, value: formatCount(people.filter((s) => s.status === "Active").length), caption: `${formatCount(people.filter((s) => s.status === "On leave").length)} on leave · ${formatCount(people.filter((s) => s.status === "Suspended").length)} suspended` },
+          seesPay
+            ? { label: "Monthly payroll", icon: Wallet, value: money(payroll), caption: `Net pay of ${formatCount(current.filter((s) => s.pay).length)} staff on record` }
+            : { label: "Away", icon: CalendarDays, value: formatCount(people.filter((s) => s.status === "On leave" || s.status === "Suspended").length), caption: "On leave or suspended" },
         ]}
       />
 
@@ -143,25 +181,48 @@ export function StaffBranchView({ branchId, onAdd }: { branchId: string; onAdd: 
 
       {/* Staff */}
       <section className="inv-section">
-        <header className="inv-section-head">
-          <h3>Staff</h3>
+        <header className="inv-section-head st-head">
           <span>
-            {formatCount(team.length)} staff member{team.length === 1 ? "" : "s"}
-            {manager ? ` · all report to ${manager.name}` : ""}
+            <h3>Staff</h3>
+            <span>
+              {formatCount(team.length)} staff member{team.length === 1 ? "" : "s"}
+              {manager ? ` · all report to ${manager.name}` : ""}
+            </span>
+          </span>
+          <span className="st-head-actions">
+            <Button variant="secondary" onClick={() => downloadStaff(people, branch?.name ?? "branch", seesPay)}>
+              <Download size={15} /> Download staff list
+            </Button>
+            <Button variant="secondary" onClick={() => onAdd()}>
+              <Plus size={15} /> Add STANLEY user
+            </Button>
+            <Button onClick={() => setRecording(true)}>
+              <Plus size={15} /> Add staff record
+            </Button>
           </span>
         </header>
         {team.length > 0 && (
           <div className="inv-toolbar">
-            <SearchInput placeholder="Search name, role, phone or email" value={q} onChange={setQ} />
-            <SelectMenu value={role} ariaLabel="Role" className="select-btn inv-sort" options={[{ value: "all", label: "All roles" }, ...STAFF_ROLES.filter((r) => r.value !== MANAGER_ROLE).map((r) => ({ value: r.value, label: r.value }))]} onChange={(v: string) => setRole(v)} />
+            <SearchInput placeholder="Search name, role, department, phone or email" value={q} onChange={setQ} />
+            <Segmented
+              label="Who"
+              value={who}
+              onChange={(v) => setWho(v)}
+              options={[
+                { value: "all", label: "Everyone" },
+                { value: "app", label: "Uses STANLEY" },
+                { value: "records", label: "Records only" },
+              ]}
+            />
+            <SelectMenu value={role} ariaLabel="Role" className="select-btn inv-sort" options={[{ value: "all", label: "All roles" }, ...roles.map((r) => ({ value: r, label: r }))]} onChange={(v: string) => setRole(v)} />
             <Segmented label="Status" value={status} onChange={(v) => setStatus(v)} options={[{ value: "all", label: "All" }, ...STAFF_STATUSES.map((s) => ({ value: s, label: s }))]} />
           </div>
         )}
         {team.length === 0 ? (
           <div className="card st-empty">
-            <EmptyState title="No staff added yet">Staff records were not part of the legacy export. Add the branch manager and the front-desk attendants — the only people who use STANLEY. Other staff are managed outside the app.</EmptyState>
-            <Button onClick={() => onAdd()}>
-              <Plus size={16} /> Add staff member
+            <EmptyState title="No staff added yet">Add the front-desk attendants who use STANLEY, and a record for everyone else who works here (radiographers, lab scientists, security …), with their salary and bank details.</EmptyState>
+            <Button onClick={() => setRecording(true)}>
+              <Plus size={16} /> Add staff record
             </Button>
           </div>
         ) : shown.length === 0 ? (
@@ -178,11 +239,16 @@ export function StaffBranchView({ branchId, onAdd }: { branchId: string; onAdd: 
                   </span>
                   <span className="st-card-name">
                     <strong>{s.name}</strong>
-                    <small>{s.role}</small>
+                    <small>
+                      {s.role}
+                      {s.department ? ` · ${s.department}` : ""}
+                    </small>
                     <span className="st-card-status">
                       <Badge tone={STATUS_TONE[s.status]} dot>
                         {s.status}
                       </Badge>
+                      {usesApp(s) ? access[staffKey(s.id)]?.off ? <Badge tone="danger">Account off</Badge> : <Badge tone="brand">Uses STANLEY</Badge> : <Badge>Record only</Badge>}
+                      {queriesOf(queries, s.id).some((q) => !q.outcome) && <Badge tone="warn">Open query</Badge>}
                     </span>
                   </span>
                 </span>
@@ -196,6 +262,11 @@ export function StaffBranchView({ branchId, onAdd }: { branchId: string; onAdd: 
                   <span>
                     <Briefcase size={14} /> {s.employment} · {tenure(s.startDate)}
                   </span>
+                  {seesPay && s.pay && (
+                    <span>
+                      <Wallet size={14} /> {money(netPay(s.pay))} a month (net)
+                    </span>
+                  )}
                 </span>
                 <span className="st-card-foot">
                   <span>Reports to {manager ? manager.name : "the branch manager (not assigned)"}</span>
@@ -208,13 +279,20 @@ export function StaffBranchView({ branchId, onAdd }: { branchId: string; onAdd: 
       </section>
 
       {open && <StaffProfile key={open.id} member={open} onClose={() => setViewing(null)} />}
+      {recording && (
+        <Modal open onClose={() => setRecording(false)} xl icon={UserRound} title="Add a staff record" description={`Someone who works at ${branch?.name ?? "the branch"}: their job, pay and bank details. Records only: they do not sign in to STANLEY.`}>
+          <div className="st-new">
+            <StaffEditForm member={null} branchId={branchId} onSaved={(id) => (setRecording(false), setViewing(id))} />
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
 
 /* ─────────────── Profile pop-up ─────────────── */
 
-type Tab = "overview" | "access" | "edit";
+type Tab = "overview" | "queries" | "access" | "pay" | "edit";
 
 export function StaffProfile({ member, onClose }: { member: StaffRecord; onClose: () => void }) {
   const { staff, moveStaffToTrash, showToast } = useApp();
@@ -228,6 +306,11 @@ export function StaffProfile({ member, onClose }: { member: StaffRecord; onClose
   const manager = managerOf(staff, member.branchId);
   const team = staff.filter((s) => s.branchId === member.branchId && s.id !== member.id && s.status !== "Left");
   const roleDef = STAFF_ROLES.find((r) => r.value === member.role);
+  const seesPay = useSeesPay();
+  const appUser = usesApp(member);
+  const queries = queriesOf(useStaffQueries(), member.id);
+  const openQ = queries.filter((q) => !q.outcome).length;
+  const accountOff = !!useAccountAccess()[staffKey(member.id)]?.off;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -240,8 +323,10 @@ export function StaffProfile({ member, onClose }: { member: StaffRecord; onClose
 
   const nav: { id: Tab; label: string; icon: typeof UserRound; note: string }[] = [
     { id: "overview", label: "Overview", icon: UserRound, note: mgr ? `Heads ${formatCount(team.length)} staff` : "Details & team" },
-    { id: "access", label: "Access & permissions", icon: KeyRound, note: "Decided by the role" },
-    { id: "edit", label: "Edit profile", icon: Pencil, note: "Details, role & status" },
+    { id: "queries", label: "Queries", icon: FileWarning, note: queries.length ? `${formatCount(queries.length)} on record${openQ ? ` · ${openQ} open` : ""}` : "None on record" },
+    { id: "access", label: "Access & account", icon: KeyRound, note: !appUser ? "Record only, no sign-in" : accountOff ? "Account deactivated" : "Decided by the role" },
+    ...(seesPay ? [{ id: "pay" as Tab, label: "Pay & bank", icon: Wallet, note: member.pay ? `${money(netPay(member.pay))} a month` : "Not set yet" }] : []),
+    { id: "edit", label: "Edit profile", icon: Pencil, note: seesPay ? "Details, job, pay & bank" : "Details, role & status" },
   ];
 
   return createPortal(
@@ -260,6 +345,8 @@ export function StaffProfile({ member, onClose }: { member: StaffRecord; onClose
               <span className="ap-badges">
                 {mgr && <em>Head of branch</em>}
                 <em>{member.status}</em>
+                {accountOff && <em className="is-off">Account off</em>}
+                {openQ > 0 && <em className="is-warn">Open query</em>}
               </span>
             </div>
 
@@ -304,6 +391,10 @@ export function StaffProfile({ member, onClose }: { member: StaffRecord; onClose
                   </code>
                 </div>
                 <div className="fd-preview-row">
+                  <span>Department</span>
+                  <code>{member.department || "Not on record"}</code>
+                </div>
+                <div className="fd-preview-row">
                   <span>Type</span>
                   <code>{member.employment}</code>
                 </div>
@@ -325,8 +416,8 @@ export function StaffProfile({ member, onClose }: { member: StaffRecord; onClose
                 <span className="fd-eyebrow">
                   Staff profile · {branch?.name} branch
                 </span>
-                <h2 id={titleId}>{tab === "edit" ? `Edit ${member.name}` : tab === "access" ? "Access & permissions" : member.name}</h2>
-                <p>{tab === "edit" ? "Update details, role, employment or status. Changes last for this session until the database is connected." : tab === "access" ? `What a ${member.role} can do in STANLEY. Access follows the role.` : mgr ? "Head of this branch — every staff member reports to them." : `${member.role} at ${branch?.name} · reports to ${manager?.name ?? "the branch manager"}.`}</p>
+                <h2 id={titleId}>{tab === "edit" ? `Edit ${member.name}` : tab === "access" ? "Access & account" : tab === "pay" ? "Pay & bank" : tab === "queries" ? "Queries" : member.name}</h2>
+                <p>{tab === "queries" ? "Queries issued to this person: the date, the reason, their response and the outcome. Only the Branch Manager and the Company Admin see them." : tab === "edit" ? "Update details, role, employment or status. Changes last for this session until the database is connected." : tab === "access" ? `What a ${member.role} can do in STANLEY. Access follows the role.` : mgr ? "Head of this branch — every staff member reports to them." : `${member.role} at ${branch?.name} · reports to ${manager?.name ?? "the branch manager"}.`}</p>
               </div>
               <button type="button" className="fd-close" onClick={onClose} aria-label="Close profile" data-close>
                 <X size={20} />
@@ -383,6 +474,87 @@ export function StaffProfile({ member, onClose }: { member: StaffRecord; onClose
                     <p className="fd-note">Patients registered, bills and payments this person records will appear here once staff sign-in is connected. Until then, visits show the role that processed them.</p>
                     {member.notes && <p className="fd-note">Notes: {member.notes}</p>}
                   </section>
+                  {(member.jobDescription || member.qualification || member.nextOfKin || member.gender || member.dateOfBirth) && (
+                    <section className="fd-section">
+                      <h3 className="fd-section-title">
+                        <span>Job and personal details</span>
+                      </h3>
+                      <dl className="st-dl">
+                        {member.jobDescription && (
+                          <div className="full">
+                            <dt>What they do</dt>
+                            <dd>{member.jobDescription}</dd>
+                          </div>
+                        )}
+                        {member.qualification && (
+                          <div>
+                            <dt>Qualification</dt>
+                            <dd>{member.qualification}</dd>
+                          </div>
+                        )}
+                        {member.gender && (
+                          <div>
+                            <dt>Gender</dt>
+                            <dd>{member.gender}</dd>
+                          </div>
+                        )}
+                        {member.dateOfBirth && (
+                          <div>
+                            <dt>Date of birth</dt>
+                            <dd>{longDate(member.dateOfBirth)}</dd>
+                          </div>
+                        )}
+                        {member.nextOfKin && (
+                          <div>
+                            <dt>Next of kin</dt>
+                            <dd>
+                              {member.nextOfKin.name} ({member.nextOfKin.relationship}) · {member.nextOfKin.phone}
+                            </dd>
+                          </div>
+                        )}
+                      </dl>
+                    </section>
+                  )}
+                </>
+              )}
+
+              {tab === "pay" && seesPay && (
+                <>
+                  <section className="fd-section">
+                    <h3 className="fd-section-title">
+                      <span>Monthly pay</span>
+                    </h3>
+                    {member.pay ? (
+                      <SummaryChips
+                        items={[
+                          { label: "Basic salary", icon: Wallet, value: money(member.pay.salary), caption: "Every month" },
+                          { label: "Allowances", icon: Plus, value: money(member.pay.allowances ?? 0), caption: "Transport, housing …" },
+                          { label: "Deductions", icon: X, value: money(member.pay.deductions ?? 0), caption: "Tax, pension, loans …" },
+                          { label: "Net pay", icon: BadgeCheck, value: money(netPay(member.pay)), caption: "Paid into the account below" },
+                        ]}
+                      />
+                    ) : (
+                      <p className="fd-note">No salary on record yet. Add it under Edit profile.</p>
+                    )}
+                  </section>
+                  <section className="fd-section">
+                    <h3 className="fd-section-title">
+                      <span>Bank details</span>
+                    </h3>
+                    {member.bank ? (
+                      <div className="st-bank">
+                        <Landmark size={22} />
+                        <span>
+                          <b>{member.bank.bankName}</b>
+                          <small>{member.bank.accountName}</small>
+                        </span>
+                        <code>{member.bank.accountNumber}</code>
+                      </div>
+                    ) : (
+                      <p className="fd-note">No bank details yet. Add them under Edit profile.</p>
+                    )}
+                    <p className="fd-note">Only the Company Admin and the Branch Manager see pay and bank details. They are in the salary report in Analysis.</p>
+                  </section>
                 </>
               )}
 
@@ -391,6 +563,7 @@ export function StaffProfile({ member, onClose }: { member: StaffRecord; onClose
                   <h3 className="fd-section-title">
                     <span>{member.role}</span>
                   </h3>
+                  {!appUser && <p className="fd-note">{member.name} is on record only and does not sign in to STANLEY. Their profile, job, pay and bank details are kept by the Company Admin and the Branch Manager.</p>}
                   <ul className="st-perms">
                     {(roleDef?.permissions ?? []).map((p) => (
                       <li key={p}>
@@ -402,8 +575,11 @@ export function StaffProfile({ member, onClose }: { member: StaffRecord; onClose
                   {member.status !== "Active" && <p className="fd-note ap-error">While {member.status.toLowerCase()}, this person cannot sign in.</p>}
                 </section>
               )}
+              {tab === "access" && appUser && !mgr && <AccountAccessPanel accountKey={staffKey(member.id)} name={member.name} what={member.role} branchId={member.branchId} />}
 
-              {tab === "edit" && <StaffEditForm member={member} onSaved={() => setTab("overview")} />}
+              {tab === "queries" && <QueriesPanel staffId={member.id} staffName={member.name} branchId={member.branchId} />}
+
+              {tab === "edit" && <StaffEditForm member={member} branchId={member.branchId} onSaved={() => setTab("overview")} />}
             </div>
 
             <footer className="fd-foot">
@@ -444,33 +620,77 @@ export function StaffProfile({ member, onClose }: { member: StaffRecord; onClose
 
 /* ─────────────── Edit form ─────────────── */
 
-function StaffEditForm({ member, onSaved }: { member: StaffRecord; onSaved: () => void }) {
-  const { staff, editStaff, showToast } = useApp();
-  const [name, setName] = useState(member.name);
-  const [phone, setPhone] = useState(member.phone);
-  const [email, setEmail] = useState(member.email);
-  const [address, setAddress] = useState(member.address ?? "");
-  const [role, setRole] = useState(member.role);
-  const [employment, setEmployment] = useState(member.employment);
-  const [startDate, setStartDate] = useState(member.startDate);
-  const [status, setStatus] = useState<StaffStatus>(member.status);
-  const [notes, setNotes] = useState(member.notes ?? "");
-  const otherManager = useMemo(() => staff.find((s) => s.branchId === member.branchId && s.id !== member.id && isManager(s) && s.status !== "Left"), [staff, member]);
+/** Edit a profile, or (member null) add a staff record. Pay and bank only for the Company Admin and the Branch Manager. */
+function StaffEditForm({ member, branchId, onSaved }: { member: StaffRecord | null; branchId: string; onSaved: (id: string) => void }) {
+  const { staff, editStaff, addStaff, showToast, user } = useApp();
+  const seesPay = useSeesPay();
+  const [name, setName] = useState(member?.name ?? "");
+  const [phone, setPhone] = useState(member?.phone ?? "");
+  const [email, setEmail] = useState(member?.email ?? "");
+  const [address, setAddress] = useState(member?.address ?? "");
+  const [role, setRole] = useState(member?.role ?? RECORD_ROLES[0]!);
+  const [otherRole, setOtherRole] = useState(member && !STAFF_ROLES.some((r) => r.value === member.role) && !RECORD_ROLES.includes(member.role) ? member.role : "");
+  const [employment, setEmployment] = useState(member?.employment ?? "Full-time");
+  const [startDate, setStartDate] = useState(member?.startDate ?? "");
+  const [status, setStatus] = useState<StaffStatus>(member?.status ?? "Active");
+  const [notes, setNotes] = useState(member?.notes ?? "");
+  const [department, setDepartment] = useState(member?.department ?? "");
+  const [jobDescription, setJobDescription] = useState(member?.jobDescription ?? "");
+  const [qualification, setQualification] = useState(member?.qualification ?? "");
+  const [gender, setGender] = useState<"" | "Female" | "Male">(member?.gender ?? "");
+  const [dob, setDob] = useState(member?.dateOfBirth ?? "");
+  const [kinName, setKinName] = useState(member?.nextOfKin?.name ?? "");
+  const [kinPhone, setKinPhone] = useState(member?.nextOfKin?.phone ?? "");
+  const [kinRel, setKinRel] = useState(member?.nextOfKin?.relationship ?? "");
+  const [salary, setSalary] = useState(member?.pay ? String(member.pay.salary) : "");
+  const [allowances, setAllowances] = useState(member?.pay?.allowances ? String(member.pay.allowances) : "");
+  const [deductions, setDeductions] = useState(member?.pay?.deductions ? String(member.pay.deductions) : "");
+  const [bankName, setBankName] = useState(member?.bank?.bankName ?? "");
+  const [accountName, setAccountName] = useState(member?.bank?.accountName ?? "");
+  const [accountNumber, setAccountNumber] = useState(member?.bank?.accountNumber ?? "");
+  const otherManager = useMemo(() => staff.find((s) => s.branchId === branchId && s.id !== member?.id && isManager(s) && s.status !== "Left"), [staff, member, branchId]);
+  const finalRole = role === "Other" ? otherRole.trim() : role;
+  const n = (v: string) => Math.max(0, Math.round(Number(v.replace(/[^\d.]/g, "")) || 0));
+  const bankAny = !!(bankName.trim() || accountName.trim() || accountNumber.trim());
 
   const emailOk = !email.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   // Field errors — shown on each field after a blocked Save (owner rule), then updated live.
-  const fieldErr: Record<"name" | "contact" | "startDate" | "role", string | null> = {
+  const fieldErr: Record<"name" | "contact" | "startDate" | "role" | "bank", string | null> = {
     name: !name.trim() ? "Enter the full name." : null,
-    contact: !phone.trim() && !email.trim() ? "Give at least a phone number or an email address." : !emailOk ? "Check the email address, e.g. name@company.com." : null,
+    // People who sign in need a way to be reached; records only may have neither.
+    contact: STAFF_ROLES.some((r) => r.value === finalRole) && !phone.trim() && !email.trim() ? "Give at least a phone number or an email address." : !emailOk ? "Check the email address, e.g. name@company.com." : null,
     startDate: !startDate ? "Choose the start date." : null,
-    role: role === MANAGER_ROLE && otherManager ? `${otherManager.name} is already the branch manager. Change their role first.` : null,
+    role: !finalRole ? "Type the role." : finalRole === MANAGER_ROLE && otherManager ? `${otherManager.name} is already the branch manager. Change their role first.` : null,
+    bank: seesPay && bankAny && (!bankName.trim() || !accountName.trim() || !/^\d{10}$/.test(accountNumber.trim())) ? "Give the bank, the account name and the 10-digit account number." : null,
   };
   const error = Object.values(fieldErr).some(Boolean);
   const [tried, setTried] = useState(false);
   const show = (k: keyof typeof fieldErr) => (tried ? fieldErr[k] : null);
   const fieldCls = (base: string, k: keyof typeof fieldErr) => ({ className: `${base} ${show(k) ? "is-error" : ""}`, "data-field-error": show(k) ? true : undefined });
-  const patch = { name: name.trim(), phone: phone.trim(), email: email.trim(), address: address.trim() || undefined, role, employment, startDate, status, notes: notes.trim() || undefined };
-  const changed = (Object.keys(patch) as (keyof typeof patch)[]).some((k) => (patch[k] ?? "") !== (member[k] ?? ""));
+  const patch = {
+    name: name.trim(),
+    phone: phone.trim(),
+    email: email.trim(),
+    address: address.trim() || undefined,
+    role: finalRole,
+    employment,
+    startDate,
+    status,
+    notes: notes.trim() || undefined,
+    department: department || undefined,
+    jobDescription: jobDescription.trim() || undefined,
+    qualification: qualification.trim() || undefined,
+    gender: gender || undefined,
+    dateOfBirth: dob || undefined,
+    nextOfKin: kinName.trim() ? { name: kinName.trim(), phone: kinPhone.trim(), relationship: kinRel.trim() } : undefined,
+    ...(seesPay
+      ? {
+          pay: salary.trim() ? { salary: n(salary), allowances: n(allowances) || undefined, deductions: n(deductions) || undefined } : undefined,
+          bank: bankAny ? { bankName: bankName.trim(), accountName: accountName.trim(), accountNumber: accountNumber.trim() } : undefined,
+        }
+      : {}),
+  };
+  const changed = !member || JSON.stringify(patch) !== JSON.stringify(Object.fromEntries(Object.keys(patch).map((k) => [k, member[k as keyof StaffRecord]])));
 
   return (
     <>
@@ -501,6 +721,29 @@ function StaffEditForm({ member, onSaved }: { member: StaffRecord; onSaved: () =
             </span>
             <input value={address} onChange={(e) => setAddress(e.target.value)} />
           </label>
+          <div className="fd-field">
+            <span className="fd-label">Gender</span>
+            <SelectMenu value={gender} ariaLabel="Gender" options={[{ value: "", label: "Not given" }, { value: "Female", label: "Female" }, { value: "Male", label: "Male" }]} onChange={(v: string) => setGender(v as "" | "Female" | "Male")} />
+          </div>
+          <label className="fd-field">
+            <span className="fd-label">
+              Date of birth <i>Optional</i>
+            </span>
+            <input type="date" value={dob} onChange={(e) => setDob(e.target.value)} />
+          </label>
+          <label className="fd-field">
+            <span className="fd-label">
+              Next of kin <i>Optional</i>
+            </span>
+            <input value={kinName} onChange={(e) => setKinName(e.target.value)} placeholder="Full name" />
+          </label>
+          <label className="fd-field">
+            <span className="fd-label">Their phone and relationship</span>
+            <span className="st-pair">
+              <input value={kinPhone} inputMode="tel" onChange={(e) => setKinPhone(e.target.value)} placeholder="Phone" />
+              <input value={kinRel} onChange={(e) => setKinRel(e.target.value)} placeholder="e.g. Sister" />
+            </span>
+          </label>
         </div>
       </section>
 
@@ -514,10 +757,40 @@ function StaffEditForm({ member, onSaved }: { member: StaffRecord; onSaved: () =
             return (
               <button key={r.value} type="button" className="fd-tile" aria-pressed={role === r.value} disabled={blocked} onClick={() => setRole(r.value)}>
                 <strong>{r.value}</strong>
-                <small>{blocked ? `${otherManager?.name} is the manager` : r.access}</small>
+                <small>{blocked ? `${otherManager?.name} is the manager` : `Signs in to STANLEY. ${r.access}`}</small>
               </button>
             );
           })}
+        </div>
+        <div className="fd-grid">
+          <div className="fd-field">
+            <span className="fd-label">Or another role (record only, no sign-in)</span>
+            <SelectMenu value={STAFF_ROLES.some((r) => r.value === role) ? "" : role} ariaLabel="Other role" options={[{ value: "", label: "Choose a role" }, ...RECORD_ROLES.map((v) => ({ value: v, label: v })), { value: "Other", label: "Other (type it)" }]} onChange={(v: string) => v && setRole(v)} />
+          </div>
+          {role === "Other" && (
+            <label {...fieldCls("fd-field", "role")}>
+              <span className="fd-label">
+                Role <em aria-hidden="true">*</em>
+              </span>
+              <input value={otherRole} onChange={(e) => setOtherRole(e.target.value)} placeholder="e.g. Porter" />
+            </label>
+          )}
+          <div className="fd-field">
+            <span className="fd-label">Department</span>
+            <SelectMenu value={department} ariaLabel="Department" options={[{ value: "", label: "Choose" }, ...DEPARTMENTS.map((v) => ({ value: v, label: v }))]} onChange={(v: string) => setDepartment(v)} />
+          </div>
+          <label className="fd-field">
+            <span className="fd-label">
+              Qualification <i>Optional</i>
+            </span>
+            <input value={qualification} onChange={(e) => setQualification(e.target.value)} placeholder="e.g. BMLS, RRT" />
+          </label>
+          <label className="fd-field full">
+            <span className="fd-label">
+              What they do <i>Optional</i>
+            </span>
+            <textarea value={jobDescription} maxLength={600} onChange={(e) => setJobDescription(e.target.value)} placeholder={"Their duties, shifts and who they work with.\nPress Enter for a new line."} />
+          </label>
         </div>
         {show("role") && (
           <div {...fieldCls("fd-field", "role")}>
@@ -562,6 +835,48 @@ function StaffEditForm({ member, onSaved }: { member: StaffRecord; onSaved: () =
         </div>
       </section>
 
+      {seesPay && (
+        <section className="fd-section">
+          <h3 className="fd-section-title">
+            <span>Pay and bank details</span>
+          </h3>
+          <div className="fd-grid">
+            <label className="fd-field">
+              <span className="fd-label">Monthly basic salary (₦)</span>
+              <input inputMode="numeric" value={salary} onChange={(e) => setSalary(e.target.value.replace(/[^\d]/g, ""))} placeholder="e.g. 150000" />
+            </label>
+            <label className="fd-field">
+              <span className="fd-label">Monthly allowances (₦)</span>
+              <input inputMode="numeric" value={allowances} onChange={(e) => setAllowances(e.target.value.replace(/[^\d]/g, ""))} placeholder="Transport, housing …" />
+            </label>
+            <label className="fd-field">
+              <span className="fd-label">Monthly deductions (₦)</span>
+              <input inputMode="numeric" value={deductions} onChange={(e) => setDeductions(e.target.value.replace(/[^\d]/g, ""))} placeholder="Tax, pension, loans …" />
+            </label>
+            <div className="fd-field">
+              <span className="fd-label">Net pay</span>
+              <b className="st-net">{salary ? money(Math.max(0, n(salary) + n(allowances) - n(deductions))) : "—"}</b>
+            </div>
+            <label {...fieldCls("fd-field", "bank")}>
+              <span className="fd-label">Bank</span>
+              <input value={bankName} onChange={(e) => setBankName(e.target.value)} placeholder="e.g. GTBank" />
+            </label>
+            <label className="fd-field">
+              <span className="fd-label">Account name</span>
+              <input value={accountName} onChange={(e) => setAccountName(e.target.value)} placeholder="As on the account" />
+            </label>
+            <label className="fd-field">
+              <span className="fd-label">Account number</span>
+              <input className="mono" inputMode="numeric" maxLength={10} value={accountNumber} onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, "").slice(0, 10))} placeholder="10 digits" />
+            </label>
+            <div {...fieldCls("fd-field full", "bank")}>
+              <FieldError msg={show("bank")} />
+              <small className="fd-hint">Only the Company Admin and the Branch Manager see pay and bank details. They go into the salary report in Analysis.</small>
+            </div>
+          </div>
+        </section>
+      )}
+
       <div className="ap-save">
         <Button
           disabled={!changed}
@@ -571,12 +886,18 @@ function StaffEditForm({ member, onSaved }: { member: StaffRecord; onSaved: () =
               focusFirstError();
               return;
             }
-            editStaff(member.id, patch);
-            showToast(`${patch.name} updated`);
-            onSaved();
+            if (member) {
+              editStaff(member.id, patch);
+              showToast(`${patch.name} updated`);
+              onSaved(member.id);
+            } else {
+              const created = addStaff({ ...patch, branchId });
+              showToast(`${patch.name} added${usesApp(created) ? "" : " (record only, no sign-in)"}`);
+              onSaved(created.id);
+            }
           }}
         >
-          Save changes
+          {member ? "Save changes" : "Add staff record"}
         </Button>
       </div>
     </>
