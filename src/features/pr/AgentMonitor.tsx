@@ -24,6 +24,7 @@ import { agentRanking, resolveRange } from "@/services/analytics";
 import { can } from "@/services/permissions";
 import { ATTENTION, OUTCOMES, STATUS_HINT, STATUS_LABEL, addCheckUp, useAgentHealth, useCheckUps, type AgentHealth, type AgentStatus, type CheckKind, type Outcome } from "@/services/agentMonitor";
 import { useIssueReports } from "@/services/issueReports";
+import { useMarketing } from "@/services/marketing";
 import { canMarkPaid, lastMonths, markPaid, monthLabel, paidMark, unmarkPaid, usePaidMarks } from "@/services/payoutMonths";
 import { formatCount, formatMoney } from "@/shared/format";
 import { Badge, EmptyState, SearchInput, Segmented, SelectMenu, type Tone } from "@/shared/ui/controls";
@@ -55,7 +56,26 @@ function Spark({ weeks }: { weeks: number[] }) {
 /* ─────────────── PR agent monitor ─────────────── */
 
 export function AgentMonitorSection({ branchId }: { branchId: string }) {
-  const list = useAgentHealth(branchId);
+  const all = useAgentHealth(branchId);
+  // Each agent's marketer: whoever looks after their hospital (owner, 2026-11-27).
+  const { staff } = useApp();
+  const mk = useMarketing();
+  const ownerOf = (hospital: string) => mk.owners[branchId]?.[hospital]?.marketerId ?? null;
+  const nameOf = (id: string | null) => (id ? (staff.find((x) => x.id === id)?.name ?? "Former marketer") : "No marketer");
+  const [who, setWho] = useState<string>("all");
+  const list = who === "all" ? all : all.filter((a) => (ownerOf(a.hospital) ?? "none") === who);
+  const byMarketer = useMemo(() => {
+    const m = new Map<string, { due: number; all: number }>();
+    for (const a of all) {
+      const k = ownerOf(a.hospital) ?? "none";
+      const v = m.get(k) ?? { due: 0, all: 0 };
+      v.all += 1;
+      if (a.due) v.due += 1;
+      m.set(k, v);
+    }
+    return [...m.entries()].sort((a, b) => b[1].due - a[1].due);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [all, mk]);
   const [view, setView] = useState<"due" | "all" | "plan">("due");
   const [status, setStatus] = useState<AgentStatus | "all">("all");
   const [q, setQ] = useState("");
@@ -72,7 +92,7 @@ export function AgentMonitorSection({ branchId }: { branchId: string }) {
     for (const a of due) m.set(a.hospital, [...(m.get(a.hospital) ?? []), a]);
     return [...m.entries()].sort((a, b) => b[1].length - a[1].length);
   }, [due]);
-  const loading = !list.length;
+  const loading = !all.length;
   if (loading && branchId !== LEGACY_BRANCH_ID) return null;
   const chips: { s: AgentStatus; icon: typeof Users }[] = [
     { s: "slipping", icon: ArrowDownRight },
@@ -95,6 +115,22 @@ export function AgentMonitorSection({ branchId }: { branchId: string }) {
           <Flag size={16} /> {loading ? "Working out who to check up on…" : <><b>{formatCount(due.length)}</b> to check up on</>}
         </span>
       </header>
+      {byMarketer.length > 1 && (
+        <div className="am-who" role="radiogroup" aria-label="Marketer">
+          <button type="button" role="radio" aria-checked={who === "all"} className={who === "all" ? "is-on" : ""} onClick={() => (setWho("all"), setPage(1))}>
+            <b>Everyone</b>
+            <small>{formatCount(all.filter((a) => a.due).length)} to check up on</small>
+          </button>
+          {byMarketer.map(([k, v]) => (
+            <button key={k} type="button" role="radio" aria-checked={who === k} className={`${who === k ? "is-on" : ""} ${k === "none" ? "is-none" : ""}`} onClick={() => (setWho(k), setPage(1))}>
+              <b>{k === "none" ? "No marketer" : nameOf(k)}</b>
+              <small>
+                {formatCount(v.due)} to check up on · {formatCount(v.all)} agents
+              </small>
+            </button>
+          ))}
+        </div>
+      )}
       <div className="am-chips">
         {chips.map(({ s, icon: Icon }) => (
           <button key={s} type="button" className={`am-chip is-${s} ${status === s ? "is-on" : ""}`} onClick={() => (setStatus(status === s ? "all" : s), setView(ATTENTION.includes(s) ? view : "all"), setPage(1))} title={STATUS_HINT[s]}>
@@ -129,7 +165,7 @@ export function AgentMonitorSection({ branchId }: { branchId: string }) {
                   <MapPinned size={18} />
                   <b>{hospital}</b>
                   <small>
-                    {agents.length} agent{agents.length === 1 ? "" : "s"} to see
+                    {agents.length} agent{agents.length === 1 ? "" : "s"} to see · {nameOf(ownerOf(hospital))}
                   </small>
                 </header>
                 <ul>
@@ -159,6 +195,7 @@ export function AgentMonitorSection({ branchId }: { branchId: string }) {
               <thead>
                 <tr>
                   <th>PR agent</th>
+                  <th>Marketer</th>
                   <th>Status</th>
                   <th className="num">Last 4 weeks</th>
                   <th>12 weeks</th>
@@ -171,7 +208,7 @@ export function AgentMonitorSection({ branchId }: { branchId: string }) {
               <tbody>
                 {rows.length === 0 ? (
                   <tr>
-                    <td colSpan={8}>
+                    <td colSpan={9}>
                       <EmptyState title={view === "due" ? "Nobody to check up on" : "No agent matches"}>{view === "due" ? "Every agent who needed attention has been checked up on." : "Try another search."}</EmptyState>
                     </td>
                   </tr>
@@ -185,6 +222,7 @@ export function AgentMonitorSection({ branchId }: { branchId: string }) {
                           {hasPhone(a.agent.phone) ? ` · ${a.agent.phone}` : ""}
                         </small>
                       </td>
+                      <td className={ownerOf(a.hospital) ? "" : "lg-muted"}>{nameOf(ownerOf(a.hospital))}</td>
                       <td>
                         <Badge tone={TONE[a.status]} dot={a.due}>
                           {STATUS_LABEL[a.status]}

@@ -8,6 +8,7 @@ import { Badge, Button, PageHeader } from "@/shared/ui/controls";
 import { BRANCH_NAV_ITEMS, canOpenBranchPage } from "@/shell/navigation";
 import { can, usePermissions } from "@/services/permissions";
 import { useBranches } from "@/services/org";
+import { BranchMarketingPage } from "@/features/marketing/MarketingPage";
 import { BranchAnalysisPage, BranchDraftsPage, BranchInventoryPage, BranchPrPage, BranchRecordsPage } from "./BranchPages";
 import { StaffBranchView } from "@/features/staff/StaffWorkspace";
 import { AddStaffDialog } from "@/features/shared/createForms";
@@ -85,6 +86,8 @@ export function BranchWorkspacePage({ branchId, page }: { branchId: string; page
       return <BranchInventoryPage key={branch.id} branch={branch} initialFilter={f ?? "all"} />;
     case "pr":
       return <BranchPrPage key={branch.id} branch={branch} />;
+    case "marketing":
+      return <BranchMarketingPage key={branch.id} branch={branch} />;
     case "analysis":
       return <BranchAnalysisPage branch={branch} />;
     case "expenses":

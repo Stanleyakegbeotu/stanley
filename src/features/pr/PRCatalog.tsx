@@ -34,6 +34,8 @@ import { useApp } from "@/app/AppState";
 import { can, usePermissions } from "@/services/permissions";
 import { agentKey, useAccountAccess } from "@/services/accountAccess";
 import { AccountAccessPanel } from "@/features/staff/StaffQueries";
+import { useMarketing } from "@/services/marketing";
+import { MoveFromPR } from "@/features/marketing/dialogs";
 import { getBranch } from "@/data/company";
 import type { DateRange } from "@/data/types";
 import { DATA_START, TODAY, addDays, diffDays, isoDate } from "@/data/demo/generator";
@@ -383,9 +385,12 @@ function AgentsModal({
   onOpenProfile: (id: number) => void;
   onAdd: (hospital: string) => void;
 }) {
-  const { agentEdits } = useApp();
+  const { agentEdits, staff } = useApp();
   const rights = usePrRights();
   const access = useAccountAccess();
+  const mk = useMarketing();
+  const [moving, setMoving] = useState<string | null>(null);
+  const hospOwner = scope.kind === "hospital" ? mk.owners[LEGACY_BRANCH_ID]?.[scope.key]?.marketerId : undefined;
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<AgentFilter>(initialFilter);
   const [sort, setSort] = useState<AgentSort>("referrals");
@@ -435,6 +440,16 @@ function AgentsModal({
           <Button variant="secondary" onClick={onClose}>
             Close
           </Button>
+          {scope.kind === "hospital" && (
+            <span className="mkx-owner-chip">
+              Marketer: <b>{hospOwner ? (staff.find((x) => x.id === hospOwner)?.name ?? "Former marketer") : "none"}</b>
+              {rights.manage && (
+                <button type="button" onClick={() => setMoving(scope.key)}>
+                  {hospOwner ? "Change" : "Assign"}
+                </button>
+              )}
+            </span>
+          )}
           {rights.manage && (
             <Button onClick={() => onAdd(scope.kind === "hospital" ? scope.key : "")}>
               <Plus size={16} /> {scope.kind === "hospital" ? `Add agent to ${scope.key}` : "Add PR agent"}
@@ -553,6 +568,7 @@ function AgentsModal({
         </div>
         <Pagination page={safe} pageSize={pageSize} sizes={[10, 25, 50]} total={rows.length} noun="PR agents" onPage={(p) => setPage(Math.min(Math.max(1, p), pages))} onPageSize={(s) => { setPageSize(s); setPage(1); }} />
       </div>
+      {moving && <MoveFromPR branchId={LEGACY_BRANCH_ID} hospital={moving} onClose={() => setMoving(null)} />}
     </Modal>
   );
 }
@@ -583,6 +599,11 @@ function AgentProfile({ agent, directory, onClose }: { agent: AgentRecord; direc
   const { revertAgent, showToast, agentEdits, moveAgentToTrash } = useApp();
   const rights = usePrRights();
   const accountOff = !!useAccountAccess()[agentKey(agent.id)]?.off;
+  // The marketer who looks after this agent's hospital (owner, 2026-11-27).
+  const { staff } = useApp();
+  const mk = useMarketing();
+  const ownerId = mk.owners[LEGACY_BRANCH_ID]?.[hospitalKey(agent.hospital)]?.marketerId;
+  const marketerName = ownerId ? (staff.find((x) => x.id === ownerId)?.name ?? "Former marketer") : "No marketer yet";
   const [trashOpen, setTrashOpen] = useState(false);
   useCommission(); // re-render when a rate changes
   const m = useMotionPreset();
@@ -688,6 +709,10 @@ function AgentProfile({ agent, directory, onClose }: { agent: AgentRecord; direc
                   <code>
                     {branch?.name} · {branch?.code}
                   </code>
+                </div>
+                <div className="fd-preview-row">
+                  <span>Marketer</span>
+                  <code>{marketerName}</code>
                 </div>
                 <p>{transferred ? `Transferred from ${recordedKey || "no hospital"} (as recorded).` : first ? `First referral on ${formatShortDate(first.at)} ${first.at.getFullYear()}.` : "No referrals recorded yet."}</p>
               </div>

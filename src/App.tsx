@@ -13,6 +13,7 @@ import { Header } from "@/shell/Header";
 import { Sidebar } from "@/shell/Sidebar";
 import { COMPANY_NAV, BRANCH_NAV_ITEMS } from "@/shell/navigation";
 import { CompanyDashboard } from "@/features/company/CompanyDashboard";
+import { CompanyMarketingPage } from "@/features/marketing/MarketingPage";
 import { AuditPage, BranchesPage, FinancePage, InventoryPage, PatientsPage, PRPage, ReportsPage, StaffPage, TrashPage } from "@/features/company/pages";
 import { SettingsPage } from "@/features/settings/AdminSettings";
 import { BranchWorkspacePage } from "@/features/branch/pages";
@@ -41,6 +42,8 @@ function RouteView({ route }: { route: Route }) {
       return <StaffPage />;
     case "pr":
       return <PRPage />;
+    case "marketing":
+      return <CompanyMarketingPage />;
     case "patients":
       return <PatientsPage />;
     case "finance":
