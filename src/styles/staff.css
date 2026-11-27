@@ -188,10 +188,6 @@
   font-size: 17px;
   color: var(--brand-800);
 }
-.st-new {
-  padding: 4px 4px 0;
-}
-
 /* ─────────────── Staff queries & account access (owner, 2026-11-26) ─────────────── */
 .ap-badges em.is-off { background: rgba(239, 68, 68, 0.28); border-color: rgba(255, 255, 255, 0.4); }
 .ap-badges em.is-warn { background: rgba(245, 158, 11, 0.3); border-color: rgba(255, 255, 255, 0.4); }

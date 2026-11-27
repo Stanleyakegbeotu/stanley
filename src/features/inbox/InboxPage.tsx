@@ -21,7 +21,7 @@ import { useApp } from "@/app/AppState";
 import { branchRoute } from "@/app/router";
 import { ACTIVE_BRANCHES, getBranch } from "@/data/company";
 import { hospitalKey } from "@/data/legacy";
-import { isManager } from "@/data/userRecords";
+import { ASSISTANT_MANAGER_ROLE, isManager } from "@/data/userRecords";
 import { deleteMessage, getFile, markRead, previewOf, sendMessage, threadOf, unreadIn, useFileUrl, useInboxStore, type ChatKind, type ChatMessage, type ChatThread, type Outgoing, type Party, type ReplyRef } from "@/services/inbox";
 import { AnimatedPage } from "@/shared/motion";
 import { initials } from "@/shared/format";
@@ -63,7 +63,9 @@ export function useConversations(): { me: Party; myName: string; list: Conversat
   const br = branchRoute(route);
   return useMemo(() => {
     const branchId = br?.branchId ?? null;
-    const me: Party = !branchId ? "admin" : user.kind === "staff" ? `fd:${branchId}` : `mgr:${branchId}`;
+    const assistantParty = (id: string) => `assistant_manager:${id}`;
+    const assistantsOf = (id: string) => staff.filter((s) => s.branchId === id && s.role === ASSISTANT_MANAGER_ROLE && s.status === "Active");
+    const me: Party = !branchId ? "admin" : user.role === ASSISTANT_MANAGER_ROLE ? assistantParty(user.staffId ?? user.key) : user.kind === "staff" ? `fd:${branchId}` : `mgr:${branchId}`;
     const myName = user.name;
     const managerOf = (id: string) => staff.find((s) => s.branchId === id && isManager(s) && s.status === "Active")?.name ?? "Branch Manager";
     const raw: Omit<Conversation, "thread">[] = [];
@@ -71,12 +73,21 @@ export function useConversations(): { me: Party; myName: string; list: Conversat
       for (const b of ACTIVE_BRANCHES) {
         raw.push({ me, them: `fd:${b.id}`, kind: "frontdesk", title: `Front desk · ${b.name}`, subtitle: "Shared inbox, answered by whoever is on duty" });
         raw.push({ me, them: `mgr:${b.id}`, kind: "manager", title: managerOf(b.id), subtitle: `Branch Manager · ${b.name} branch` });
+        for (const assistant of assistantsOf(b.id)) raw.push({ me, them: assistantParty(assistant.id), kind: "manager", title: assistant.name, subtitle: `Assistant Manager · ${b.name} branch` });
       }
     } else {
       const b = getBranch(branchId);
       raw.push({ me, them: "admin", kind: "admin", title: "Company Admin", subtitle: "Company administration" });
-      if (me.startsWith("mgr:")) raw.push({ me, them: `fd:${branchId}`, kind: "frontdesk", title: `Front desk · ${b?.name ?? ""}`, subtitle: "Shared inbox, answered by whoever is on duty" });
-      else raw.push({ me, them: `mgr:${branchId}`, kind: "manager", title: managerOf(branchId), subtitle: `Branch Manager · ${b?.name ?? ""} branch` });
+      if (user.role === ASSISTANT_MANAGER_ROLE) {
+        raw.push({ me, them: `mgr:${branchId}`, kind: "manager", title: managerOf(branchId), subtitle: `Branch Manager · ${b?.name ?? ""} branch` });
+        raw.push({ me, them: `fd:${branchId}`, kind: "frontdesk", title: `Front desk · ${b?.name ?? ""}`, subtitle: "Shared inbox, answered by whoever is on duty" });
+      } else if (me.startsWith("mgr:")) {
+        raw.push({ me, them: `fd:${branchId}`, kind: "frontdesk", title: `Front desk · ${b?.name ?? ""}`, subtitle: "Shared inbox, answered by whoever is on duty" });
+        for (const assistant of assistantsOf(branchId)) raw.push({ me, them: assistantParty(assistant.id), kind: "manager", title: assistant.name, subtitle: `Assistant Manager · ${b?.name ?? ""} branch` });
+      } else {
+        raw.push({ me, them: `mgr:${branchId}`, kind: "manager", title: managerOf(branchId), subtitle: `Branch Manager · ${b?.name ?? ""} branch` });
+        for (const assistant of assistantsOf(branchId)) raw.push({ me, them: assistantParty(assistant.id), kind: "manager", title: assistant.name, subtitle: `Assistant Manager · ${b?.name ?? ""} branch` });
+      }
     }
     for (const a of agents) raw.push({ me, them: `pr:${a.id}`, kind: "agent", title: a.name, subtitle: `PR agent${hospitalKey(a.hospital) ? ` · ${hospitalKey(a.hospital)}` : ""}` });
     // Staff conversations and the first three PR agents open with a short sample; the rest start empty.
@@ -92,7 +103,7 @@ export function useConversations(): { me: Party; myName: string; list: Conversat
       return ly.localeCompare(lx) || x.title.localeCompare(y.title);
     });
     return { me, myName, list, unread: list.reduce((n, c) => n + unreadIn(c.thread, me), 0) };
-  }, [br?.branchId, user.kind, user.name, agents, staff, store]);
+  }, [br?.branchId, user.kind, user.role, user.key, user.staffId, user.name, agents, staff, store]);
 }
 
 /* ─────────────── header button ─────────────── */

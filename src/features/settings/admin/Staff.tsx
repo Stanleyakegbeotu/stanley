@@ -9,7 +9,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowRightLeft, History, Plus, UserCog } from "lucide-react";
 import { useApp } from "@/app/AppState";
 import { getBranch } from "@/data/company";
-import { FRONT_DESK_ROLE, MANAGER_ROLE, STAFF_STATUSES, managerOf, type StaffRecord, type StaffStatus } from "@/data/userRecords";
+import { ASSISTANT_MANAGER_ROLE, FRONT_DESK_ROLE, MANAGER_ROLE, STAFF_STATUSES, managerOf, type StaffRecord, type StaffStatus } from "@/data/userRecords";
 import { useAuditLog } from "@/services/audit";
 import { useBranches } from "@/services/org";
 import { resolvePhoto, useSettings } from "@/services/settingsStore";
@@ -54,7 +54,7 @@ export function StaffSection({ action, onActionDone }: { action?: string | null;
       <div className="sc-toolbar">
         <SearchInput placeholder="Search name, ID, email or phone" value={q} onChange={setQ} />
         <SelectMenu value={branch} ariaLabel="Branch" className="select-btn" options={[{ value: "all", label: "All branches" }, ...branches.map((b) => ({ value: b.id, label: `${b.name} branch`, description: b.status }))]} onChange={(v: string) => setBranch(v)} />
-        <SelectMenu value={role} ariaLabel="Role" className="select-btn" options={[{ value: "all", label: "All roles" }, { value: MANAGER_ROLE, label: MANAGER_ROLE }, { value: FRONT_DESK_ROLE, label: FRONT_DESK_ROLE }]} onChange={(v: string) => setRole(v)} />
+        <SelectMenu value={role} ariaLabel="Role" className="select-btn" options={[{ value: "all", label: "All roles" }, { value: MANAGER_ROLE, label: MANAGER_ROLE }, { value: ASSISTANT_MANAGER_ROLE, label: ASSISTANT_MANAGER_ROLE }, { value: FRONT_DESK_ROLE, label: FRONT_DESK_ROLE }]} onChange={(v: string) => setRole(v)} />
         <SelectMenu value={status} ariaLabel="Account status" className="select-btn" options={[{ value: "all", label: "Any status" }, ...STAFF_STATUSES.map((s) => ({ value: s, label: s }))]} onChange={(v: "all" | StaffStatus) => setStatus(v)} />
         <Button onClick={() => setAdding((n) => n + 1)}>
           <Plus size={16} /> Add staff
@@ -187,7 +187,7 @@ function ManageStaff({ member, onClose }: { member: StaffRecord; onClose: () => 
         <div className="sc-manage">
           <label className="field">
             Role
-            <SelectMenu value={member.role} ariaLabel="Role" className="select-btn" options={[MANAGER_ROLE, FRONT_DESK_ROLE].map((r) => ({ value: r, label: r }))} onChange={(v: string) => v !== member.role && setPending({ kind: "role", value: v })} />
+            <SelectMenu value={member.role} ariaLabel="Role" className="select-btn" options={[MANAGER_ROLE, ASSISTANT_MANAGER_ROLE, FRONT_DESK_ROLE].map((r) => ({ value: r, label: r }))} onChange={(v: string) => v !== member.role && setPending({ kind: "role", value: v })} />
           </label>
           <label className="field">
             Branch

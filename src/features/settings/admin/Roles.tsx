@@ -31,11 +31,11 @@ export function RolesSection() {
         {(["Company Admin", ...BRANCH_ROLES] as RoleName[]).map((r) => (
           <div key={r} className="sc-role-card">
             <b>{r}</b>
-            <small>{r === "Company Admin" ? "Whole company · every permission · can't be restricted" : r === "Branch Manager" ? "Runs one branch and its front desk" : "Front-desk attendants: patients, billing, payments"}</small>
+            <small>{r === "Company Admin" ? "Whole company · every permission · can't be restricted" : r === "Branch Manager" ? "Runs one branch and its front desk" : r === "Assistant Manager" ? "Inherits Branch Manager access, except three fixed marketing decisions" : "Front-desk attendants: patients, billing, payments"}</small>
             <span>
               {formatCount(holders(r))} {r === "Company Admin" ? "account" : `account${holders(r) === 1 ? "" : "s"}`}
             </span>
-            {r !== "Company Admin" && (
+            {r !== "Company Admin" && r !== "Assistant Manager" && (
               <button type="button" className="sc-link" onClick={() => setReset(r as Exclude<RoleName, "Company Admin">)}>
                 <RotateCcw size={13} /> Reset to defaults
               </button>
@@ -78,7 +78,11 @@ export function RolesSection() {
                       const on = can(r, p.id);
                       return (
                         <td key={r} className="center">
-                          {p.adminOnly || (p.managersOnly && r === "Front Desk") ? (
+                          {r === "Assistant Manager" ? (
+                            <span className={"sc-perm " + (on ? "is-on" : "is-locked")} title={p.branchManagerOnly ? "Branch Manager only" : "Inherits the Branch Manager permission"}>
+                              {on ? <Check size={14} /> : <Lock size={13} />}
+                            </span>
+                          ) : p.adminOnly || (p.managersOnly && r === "Front Desk") ? (
                             <span className="sc-perm is-locked" title={p.adminOnly ? "Company Admin only — can't be given to branch roles" : "Branch Manager and Company Admin only — the front desk are staff themselves"}>
                               <Lock size={13} />
                             </span>

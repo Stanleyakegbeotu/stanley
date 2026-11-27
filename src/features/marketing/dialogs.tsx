@@ -7,6 +7,7 @@
 import { useMemo, useState } from "react";
 import { ArrowRight, Check, FileText, Gift, Hospital, Lock, Plus, Send, ShieldAlert, Target, Trash2, X } from "lucide-react";
 import { useApp } from "@/app/AppState";
+import { can } from "@/services/permissions";
 import { logAudit } from "@/services/audit";
 import { BONUS_TEXT, DEFAULT_POLICY, EMPTY_BONUS, STAGE_LABEL, decideTransfer, directMove, effectiveTasks, keepLastMonthTasks, monthName, moveMode, policyOf, requestRelease, rulesText, rulesVersion, saveMonthTasks, sendCaution, setBonus, setPolicy, setRulesNotes, type BonusKind, type BonusPlan, type CustomTask, type Policy, type TaskSet, type Transfer } from "@/services/marketing";
 import { formatCount } from "@/shared/format";
@@ -32,6 +33,7 @@ const initials = (n: string) =>
 
 export function MoveDialog({ d, hospital, onClose }: { d: MarketingData; hospital: string; onClose: () => void }) {
   const { user, showToast } = useApp();
+  const canDirectReassign = can(user.role, "marketing.hospitals.reassign");
   const s = d.statuses.get(hospital);
   const h = d.hospitals.find((x) => x.key === hospital);
   const owner = s?.owner ?? null;
@@ -52,12 +54,12 @@ export function MoveDialog({ d, hospital, onClose }: { d: MarketingData; hospita
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          {m.mode !== "locked" && !pending && (
+          {m.mode !== "locked" && !pending && (m.mode !== "direct" || canDirectReassign) && (
             <Button
               disabled={!to || why.trim().length < 3}
               onClick={() => {
                 if (m.mode === "direct") {
-                  directMove(d.branchId, hospital, owner, to, why, user.name);
+                  directMove(d.branchId, hospital, owner, to, why, user.name, user.role);
                   showToast(`${hospital} moved to ${d.nameOf(to)}`);
                 } else {
                   requestRelease(d.branchId, hospital, owner!, to, why, user.name);
@@ -168,6 +170,7 @@ export function CautionDialog({ d, hospital, onClose }: { d: MarketingData; hosp
 
 export function TransferRow({ d, t }: { d: MarketingData; t: Transfer }) {
   const { user, showToast } = useApp();
+  const canDecide = can(user.role, "marketing.transfers.decide");
   const [note, setNote] = useState("");
   return (
     <li className="mkx-transfer">
@@ -185,13 +188,13 @@ export function TransferRow({ d, t }: { d: MarketingData; t: Transfer }) {
           <Badge tone={t.stage === "manager" ? "warn" : "info"}>{STAGE_LABEL[t.stage]}</Badge>
         </small>
       </span>
-      {t.stage === "manager" && (
+      {t.stage === "manager" && canDecide && (
         <span className="mk-actions">
           <input className="mkx-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" />
-          <Button variant="secondary" size="sm" onClick={() => (decideTransfer(t.id, false, user.name, note), showToast("Not approved"))}>
+          <Button variant="secondary" size="sm" onClick={() => (decideTransfer(t.id, false, user.name, note, user.role), showToast("Not approved"))}>
             <X size={14} /> Decline
           </Button>
-          <Button size="sm" onClick={() => (decideTransfer(t.id, true, user.name, note), showToast(`${t.hospital} moved to ${d.nameOf(t.to)}`))}>
+          <Button size="sm" onClick={() => (decideTransfer(t.id, true, user.name, note, user.role), showToast(`${t.hospital} moved to ${d.nameOf(t.to)}`))}>
             <Check size={14} /> Approve
           </Button>
         </span>
@@ -237,7 +240,7 @@ export function TasksDialog({ d, onClose }: { d: MarketingData; onClose: () => v
             <Button
               variant="secondary"
               onClick={() => {
-                keepLastMonthTasks(d.branchId, d.ym, user.name);
+                keepLastMonthTasks(d.branchId, d.ym, user.name, user.role);
                 showToast("Last month's tasks kept for this month");
                 onClose();
               }}
@@ -247,7 +250,7 @@ export function TasksDialog({ d, onClose }: { d: MarketingData; onClose: () => v
           )}
           <Button
             onClick={() => {
-              saveMonthTasks(d.branchId, d.ym, { base, overrides: over, custom }, user.name);
+              saveMonthTasks(d.branchId, d.ym, { base, overrides: over, custom }, user.name, user.role);
               showToast(`Tasks set for ${monthName(d.ym, true)}`);
               onClose();
             }}
