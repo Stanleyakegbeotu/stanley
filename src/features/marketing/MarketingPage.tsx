@@ -76,6 +76,8 @@ export function MarketingWorkspace({ branchId }: { branchId: string }) {
   const [dialog, setDialog] = useState<Dialog>(null);
   const [allDormant, setAllDormant] = useState(false);
   const canManage = can(user.role, "referral.manage");
+  const canSetTargets = can(user.role, "marketing.targets.manage");
+  const canReassignHospitals = can(user.role, "marketing.hospitals.reassign");
   const totals = d.progress.reduce((s, p) => ({ revenue: s.revenue + p.revenue, target: s.target + p.target, sourced: s.sourced + p.sourcedHospitals }), { revenue: 0, target: 0, sourced: 0 });
   const sourceTarget = d.marketers.reduce((s, m) => s + tasksFor(d.st, branchId, m.id).newHospitals, 0);
   const statuses = [...d.statuses.values()];
@@ -116,7 +118,7 @@ export function MarketingWorkspace({ branchId }: { branchId: string }) {
                     <b>{x.label}</b>
                     {!x.done && <small>{x.hint}</small>}
                   </span>
-                  {!x.done && (
+                  {!x.done && (x.key !== "tasks" || canSetTargets) && (x.key !== "owners" || canReassignHospitals) && (
                     <Button size="sm" onClick={() => open(x.key)}>
                       {x.key === "owners" ? "Share out" : "Set up"} <ArrowRight size={13} />
                     </Button>
@@ -163,9 +165,9 @@ export function MarketingWorkspace({ branchId }: { branchId: string }) {
           </h2>
           {canManage && (
             <span className="mkx-head-tools">
-              <Button variant="secondary" size="sm" onClick={() => setDialog({ kind: "tasks" })}>
+              {canSetTargets && <Button variant="secondary" size="sm" onClick={() => setDialog({ kind: "tasks" })}>
                 <Target size={14} /> Monthly tasks
-              </Button>
+              </Button>}
               <Button variant="secondary" size="sm" onClick={() => setDialog({ kind: "bonus" })}>
                 <Gift size={14} /> Bonus
               </Button>
@@ -247,7 +249,7 @@ export function MarketingWorkspace({ branchId }: { branchId: string }) {
             <h2>
               <Hospital size={18} /> Hospitals without a marketer
             </h2>
-            {canManage && (
+            {canReassignHospitals && (
               <Button size="sm" onClick={() => setDialog({ kind: "split-fill" })}>
                 <UserPlus size={14} /> Share them out
               </Button>
@@ -441,6 +443,7 @@ function MarketerDetail({ d, id, onMove, onClose }: { d: MarketingData; id: stri
   const max = Math.max(...history.map((h) => Math.max(h.revenue, h.target)), 1);
   const mine = [...d.statuses.values()].filter((s) => s.owner === id).sort((a, b) => (d.figs.get(b.key)?.revenue ?? 0) - (d.figs.get(a.key)?.revenue ?? 0));
   const canManage = can(user.role, "referral.manage");
+  const canSetTargets = can(user.role, "marketing.targets.manage");
   const done = t.custom.filter((c) => taskDoneAt(d.st, d.branchId, d.ym, id, c.id)).length;
   const work = d.st.entries.filter((e) => e.branchId === d.branchId && e.marketerId === id).slice(0, 12);
   const agreed = (d.st.acks[id]?.version ?? -1) >= (d.st.rules[d.branchId]?.version ?? 0) && !!d.st.rules[d.branchId];
@@ -499,12 +502,12 @@ function MarketerDetail({ d, id, onMove, onClose }: { d: MarketingData; id: stri
                       {formatCount(d.hospitals.find((h) => h.key === s.key)?.agentIds.length ?? 0)} agents · {formatCount(d.figs.get(s.key)?.patients ?? 0)} patients · {d.money(d.figs.get(s.key)?.revenue ?? 0)}
                     </small>
                   </span>
-                  <span className="mkx-hosp-tags">
+          <span className="mkx-hosp-tags">
                     {s.dormant !== "active" && <Badge tone={DORMANT_TONE[s.dormant]}>{DORMANT_TEXT[s.dormant]}</Badge>}
                     {s.growth && <Badge tone="info">Needs growth</Badge>}
                     {s.handoverUntil && <Badge tone="brand">Handover</Badge>}
                   </span>
-                  {canManage && (
+          {canManage && (
                     <button type="button" className="mkx-move" onClick={() => onMove(s.key)} disabled={s.locked && s.dormant !== "flagged" && s.dormant !== "overdue"} title={s.locked ? "Locked: one of their top hospitals" : "Move to another marketer"}>
                       {s.locked && s.dormant !== "flagged" && s.dormant !== "overdue" ? <Lock size={14} /> : "Move"}
                     </button>
@@ -527,7 +530,7 @@ function MarketerDetail({ d, id, onMove, onClose }: { d: MarketingData; id: stri
                 </div>
               ))}
             </div>
-            {canManage && (
+            {canSetTargets && (
               <div className="mk-target">
                 <label className="field">
                   Their target for {monthName(d.ym, true)} (₦)
@@ -537,7 +540,7 @@ function MarketerDetail({ d, id, onMove, onClose }: { d: MarketingData; id: stri
                   variant="secondary"
                   disabled={!Number(target) || Number(target) === p.target}
                   onClick={() => {
-                    setTarget(d.branchId, id, d.ym, Number(target), user.name);
+                    setTarget(d.branchId, id, d.ym, Number(target), user.name, user.role);
                     logAudit({ category: "PR agents", action: "Marketer target set", record: `${m.name} · ${monthName(d.ym, true)}`, details: `${d.money(Number(target))}`, branchId: d.branchId });
                     showToast(`Target set: ${d.money(Number(target))}`);
                   }}

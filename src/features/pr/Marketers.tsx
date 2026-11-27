@@ -72,7 +72,7 @@ export function SplitDialog({ branchId, mode, hospitals, marketers, onClose }: {
           <Button
             disabled={!moves.length}
             onClick={() => {
-              applyMoves(branchId, moves, user.name, mode === "fill" ? "Fair split: hospitals without a marketer" : "Fair split: evened out");
+              applyMoves(branchId, moves, user.name, mode === "fill" ? "Fair split: hospitals without a marketer" : "Fair split: evened out", user.role);
               logAudit({ category: "PR agents", action: "Hospitals shared out to marketers", record: `${moves.length} hospitals`, details: moves.map((m) => `${m.hospital} → ${nameOf(m.to)}`).join(", "), branchId });
               showToast(`${moves.length} hospital${moves.length === 1 ? "" : "s"} given to marketers`);
               onClose();

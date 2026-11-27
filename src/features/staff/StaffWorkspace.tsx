@@ -26,8 +26,6 @@ import { useApp } from "@/app/AppState";
 import { getBranch } from "@/data/company";
 import { DEPARTMENTS, EMPLOYMENT_TYPES, MANAGER_ROLE, RECORD_ROLES, STAFF_ROLES, STAFF_STATUSES, isManager, managerOf, netPay, usesApp, type StaffRecord, type StaffStatus } from "@/data/userRecords";
 import { formatMoney } from "@/shared/format";
-import { Modal } from "@/shared/ui/Modal";
-import { downloadFile } from "@/features/settings/admin/ui";
 import { Reveal, useMotionPreset } from "@/shared/motion";
 import { formatCount } from "@/shared/format";
 import { Badge, Button, EmptyState, SearchInput, Segmented, SelectMenu } from "@/shared/ui/controls";
@@ -39,6 +37,8 @@ import { resolvePhoto, useSettings } from "@/services/settingsStore";
 import { staffKey, useAccountAccess } from "@/services/accountAccess";
 import { queriesOf, useStaffQueries } from "@/services/staffQueries";
 import { AccountAccessPanel, QueriesPanel } from "./StaffQueries";
+import { ReportBuilder } from "@/features/reports/ReportBuilder";
+import { reportById } from "@/features/reports/specs";
 
 export const staffInitials = (name: string) =>
   name
@@ -79,27 +79,19 @@ export const useSeesPay = () => {
 };
 const money = (n: number) => formatMoney(n, "NGN");
 
-/** The staff list as a spreadsheet (CSV), with pay and bank details for those allowed to see them. */
-function downloadStaff(list: StaffRecord[], branchName: string, withPay: boolean) {
-  const cell = (v: string | number | undefined) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const head = ["Staff ID", "Name", "Role", "Department", "Uses STANLEY", "Status", "Employment", "Start date", "Phone", "Email", "Address", ...(withPay ? ["Monthly salary", "Allowances", "Deductions", "Net pay", "Bank", "Account name", "Account number"] : [])];
-  const rows = list.map((p) => [p.id, p.name, p.role, p.department, usesApp(p) ? "Yes" : "No (record only)", p.status, p.employment, p.startDate, p.phone, p.email, p.address, ...(withPay ? [p.pay?.salary, p.pay?.allowances, p.pay?.deductions, p.pay ? netPay(p.pay) : "", p.bank?.bankName, p.bank?.accountName, p.bank?.accountNumber] : [])]);
-  downloadFile(`staff-${branchName.toLowerCase().replace(/\s+/g, "-")}-${new Date().toISOString().slice(0, 10)}.csv`, [head, ...rows].map((r) => r.map(cell).join(",")).join("\n"), "text/csv");
-}
-
 export function StaffBranchView({ branchId, onAdd }: { branchId: string; onAdd: (role?: string) => void }) {
   const access = useAccountAccess();
   const queries = useStaffQueries();
   const { staff } = useApp();
   const seesPay = useSeesPay();
   const [who, setWho] = useState<"all" | "app" | "records">("all");
-  const [recording, setRecording] = useState(false);
   const m = useMotionPreset();
   const branch = getBranch(branchId);
   const [q, setQ] = useState("");
   const [role, setRole] = useState("all");
   const [status, setStatus] = useState<"all" | StaffStatus>("all");
   const [viewing, setViewing] = useState<string | null>(null);
+  const [staffReportOpen, setStaffReportOpen] = useState(false);
 
   const people = staff.filter((s) => s.branchId === branchId);
   const manager = managerOf(staff, branchId);
@@ -190,14 +182,11 @@ export function StaffBranchView({ branchId, onAdd }: { branchId: string; onAdd: 
             </span>
           </span>
           <span className="st-head-actions">
-            <Button variant="secondary" onClick={() => downloadStaff(people, branch?.name ?? "branch", seesPay)}>
+            <Button variant="secondary" onClick={() => setStaffReportOpen(true)}>
               <Download size={15} /> Download staff list
             </Button>
-            <Button variant="secondary" onClick={() => onAdd()}>
-              <Plus size={15} /> Add STANLEY user
-            </Button>
-            <Button onClick={() => setRecording(true)}>
-              <Plus size={15} /> Add staff record
+            <Button onClick={() => onAdd()}>
+              <Plus size={15} /> Add a user
             </Button>
           </span>
         </header>
@@ -221,9 +210,6 @@ export function StaffBranchView({ branchId, onAdd }: { branchId: string; onAdd: 
         {team.length === 0 ? (
           <div className="card st-empty">
             <EmptyState title="No staff added yet">Add the front-desk attendants who use STANLEY, and a record for everyone else who works here (radiographers, lab scientists, security …), with their salary and bank details.</EmptyState>
-            <Button onClick={() => setRecording(true)}>
-              <Plus size={16} /> Add staff record
-            </Button>
           </div>
         ) : shown.length === 0 ? (
           <div className="card st-empty">
@@ -279,12 +265,14 @@ export function StaffBranchView({ branchId, onAdd }: { branchId: string; onAdd: 
       </section>
 
       {open && <StaffProfile key={open.id} member={open} onClose={() => setViewing(null)} />}
-      {recording && (
-        <Modal open onClose={() => setRecording(false)} xl icon={UserRound} title="Add a staff record" description={`Someone who works at ${branch?.name ?? "the branch"}: their job, pay and bank details. Records only: they do not sign in to STANLEY.`}>
-          <div className="st-new">
-            <StaffEditForm member={null} branchId={branchId} onSaved={(id) => (setRecording(false), setViewing(id))} />
-          </div>
-        </Modal>
+      {staffReportOpen && reportById("staff") && (
+        <ReportBuilder
+          spec={reportById("staff")!}
+          initialBranch={branchId}
+          lockedBranch={branchId}
+          initialVariant="directory"
+          onClose={() => setStaffReportOpen(false)}
+        />
       )}
     </div>
   );

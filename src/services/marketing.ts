@@ -24,6 +24,7 @@ import { MARKETER_ROLE, type AgentRecord, type StaffRecord } from "@/data/userRe
 import { DATA_START, TODAY } from "@/data/demo/generator";
 import { agentRanking, referralsByDay, resolveRange } from "@/services/analytics";
 import { logAudit } from "@/services/audit";
+import { can } from "@/services/permissions";
 import type { CheckUp } from "@/services/agentMonitor";
 import type { DateRange } from "@/data/types";
 
@@ -108,6 +109,10 @@ interface State {
 /* ─────────────── store ─────────────── */
 
 const KEY = "stanley.marketing.v1";
+
+function requireMarketingPermission(role: string, permission: string) {
+  if (!can(role, permission)) throw new Error("This account does not have permission to make that marketing change.");
+}
 const EMPTY: State = { owners: {}, ownerHistory: [], targets: {}, entries: [], partners: [], policy: {}, tasks: {}, taskDone: {}, bonus: {}, rules: {}, acks: {}, transfers: [], cautions: [] };
 const listeners = new Set<() => void>();
 let state: State | null = null;
@@ -180,7 +185,7 @@ export function hospitalsOf(st: State, branchId: string, agents: readonly AgentR
 }
 
 /** Give a hospital to a marketer (or take it away with null). */
-export function setHospitalOwner(branchId: string, hospital: string, marketerId: string | null, by: string, reason: string) {
+function writeHospitalOwner(branchId: string, hospital: string, marketerId: string | null, by: string, reason: string) {
   const st = current();
   const owners = { ...(st.owners[branchId] ?? {}) };
   const from = owners[hospital]?.marketerId ?? null;
@@ -188,6 +193,11 @@ export function setHospitalOwner(branchId: string, hospital: string, marketerId:
   if (marketerId) owners[hospital] = { marketerId, since: nowIso(), by };
   else delete owners[hospital];
   commit({ ...st, owners: { ...st.owners, [branchId]: owners }, ownerHistory: [{ at: nowIso(), by, branchId, hospital, from, to: marketerId, reason: reason.trim() }, ...st.ownerHistory] });
+}
+/** Direct ownership reassignment is reserved for the Branch Manager and Company Admin. */
+export function setHospitalOwner(branchId: string, hospital: string, marketerId: string | null, by: string, reason: string, role: string) {
+  requireMarketingPermission(role, "marketing.hospitals.reassign");
+  writeHospitalOwner(branchId, hospital, marketerId, by, reason);
 }
 
 export interface Move {
@@ -239,10 +249,11 @@ export function suggestSplit(hospitals: HospitalInfo[], marketerIds: string[], r
 export function seedOwners(branchId: string, hospitals: HospitalInfo[], marketerIds: string[]) {
   const st = current();
   if (!marketerIds.length || !hospitals.length || Object.keys(st.owners[branchId] ?? {}).length || st.ownerHistory.some((h) => h.branchId === branchId)) return;
-  applyMoves(branchId, suggestSplit(hospitals, marketerIds, false), "STANLEY", "Sample split (until the manager sets it)");
+  for (const m of suggestSplit(hospitals, marketerIds, false)) writeHospitalOwner(branchId, m.hospital, m.to, "STANLEY", "Sample split (until the manager sets it)");
 }
-export function applyMoves(branchId: string, moves: Move[], by: string, reason: string) {
-  for (const m of moves) setHospitalOwner(branchId, m.hospital, m.to, by, reason);
+export function applyMoves(branchId: string, moves: Move[], by: string, reason: string, role: string) {
+  requireMarketingPermission(role, "marketing.hospitals.reassign");
+  for (const m of moves) writeHospitalOwner(branchId, m.hospital, m.to, by, reason);
 }
 
 /* ─────────────── figures (hospital level) ─────────────── */
@@ -302,7 +313,8 @@ const sumFor = (figs: Map<string, HospitalFigures>, keys: string[]) =>
 
 const targetKey = (branchId: string, marketerId: string, ym: string) => `${branchId}|${marketerId}|${ym}`;
 /** Set (or clear with null) a marketer's target for a month, in the branch currency. */
-export function setTarget(branchId: string, marketerId: string, ym: string, amount: number | null, by: string) {
+export function setTarget(branchId: string, marketerId: string, ym: string, amount: number | null, by: string, role: string) {
+  requireMarketingPermission(role, "marketing.targets.manage");
   const st = current();
   const targets = { ...st.targets };
   if (amount === null) delete targets[targetKey(branchId, marketerId, ym)];
@@ -511,7 +523,7 @@ export function decidePartner(id: string, status: Exclude<PartnerStatus, "propos
   const p = st.partners.find((x) => x.id === id);
   if (!p) return;
   commit({ ...st, partners: st.partners.map((x) => (x.id === id ? { ...x, status, decidedBy: by, decidedAt: nowIso(), decisionNote: note.trim() || undefined } : x)) });
-  if (status === "partnered") setHospitalOwner(p.branchId, p.code, p.marketerId, by, `New partner registered by the marketer`);
+  if (status === "partnered") writeHospitalOwner(p.branchId, p.code, p.marketerId, by, "New partner registered by the marketer");
 }
 
 /* ═══════════════ Marketing rules (owner, 2026-11-27) ═══════════════
@@ -592,15 +604,20 @@ export function tasksFor(st: State, branchId: string, marketerId: string, ym = m
   const { tasks } = effectiveTasks(st, branchId, ym);
   return { ...tasks.base, ...(tasks.overrides[marketerId] ?? {}), custom: tasks.custom.filter((c) => !c.marketerIds.length || c.marketerIds.includes(marketerId)) };
 }
-export function saveMonthTasks(branchId: string, ym: string, t: Pick<MonthTasks, "base" | "overrides" | "custom">, by: string, carried = false) {
+function writeMonthTasks(branchId: string, ym: string, t: Pick<MonthTasks, "base" | "overrides" | "custom">, by: string, carried = false) {
   const st = current();
   commit({ ...st, tasks: { ...st.tasks, [taskKey(branchId, ym)]: { ym, ...t, setBy: by, at: nowIso(), carried } } });
   logAudit({ category: "PR agents", action: carried ? "Marketer tasks carried over" : "Marketer tasks set", record: monthName(ym, true), details: `By ${by}`, branchId });
 }
+export function saveMonthTasks(branchId: string, ym: string, t: Pick<MonthTasks, "base" | "overrides" | "custom">, by: string, role: string) {
+  requireMarketingPermission(role, "marketing.targets.manage");
+  writeMonthTasks(branchId, ym, t, by);
+}
 /** Keep last month's tasks for this month (one tap). */
-export function keepLastMonthTasks(branchId: string, ym: string, by: string) {
+export function keepLastMonthTasks(branchId: string, ym: string, by: string, role: string) {
+  requireMarketingPermission(role, "marketing.targets.manage");
   const { tasks } = effectiveTasks(current(), branchId, ym);
-  saveMonthTasks(branchId, ym, { base: tasks.base, overrides: tasks.overrides, custom: [] }, by);
+  writeMonthTasks(branchId, ym, { base: tasks.base, overrides: tasks.overrides, custom: [] }, by);
 }
 /** From the 3rd of the month, a month nobody set keeps last month's tasks automatically (marketers never start without tasks). */
 export function carryOverIfLate(branchId: string) {
@@ -609,7 +626,7 @@ export function carryOverIfLate(branchId: string) {
   if (st.tasks[taskKey(branchId, ym)] || TODAY.getDate() < 3) return;
   const { tasks } = effectiveTasks(st, branchId, ym);
   if (!tasks.setBy) return;
-  saveMonthTasks(branchId, ym, { base: tasks.base, overrides: tasks.overrides, custom: [] }, "STANLEY (carried over)", true);
+  writeMonthTasks(branchId, ym, { base: tasks.base, overrides: tasks.overrides, custom: [] }, "STANLEY (carried over)", true);
 }
 const doneKey = (branchId: string, ym: string, marketerId: string, id: string) => `${branchId}|${ym}|${marketerId}|${id}`;
 export const taskDoneAt = (st: State, branchId: string, ym: string, marketerId: string, id: string) => st.taskDone[doneKey(branchId, ym, marketerId, id)];
@@ -913,7 +930,7 @@ function addTransfer(t: Omit<Transfer, "id" | "at" | "steps">, first: string): T
   return made;
 }
 function finish(t: Transfer, by: string) {
-  setHospitalOwner(t.branchId, t.hospital, t.to, by, t.reason || "Transfer approved");
+  writeHospitalOwner(t.branchId, t.hospital, t.to, by, t.reason || "Transfer approved");
   logAudit({ category: "PR agents", action: "Hospital moved to another marketer", record: t.hospital, details: `${t.kind === "offer" ? "Offered by the marketer, approved" : t.kind === "request" ? "Released by the marketer" : "Moved by the manager"} · ${t.reason} · ${by}`, branchId: t.branchId });
 }
 function update(id: string, patch: Partial<Transfer>, s2: ReturnType<typeof step>) {
@@ -938,7 +955,8 @@ export function offerTransfer(branchId: string, hospital: string, from: string, 
   logAudit({ category: "PR agents", action: "Marketer offered a hospital to a colleague", record: hospital, details: `${reason} · ${by}`, branchId });
   return t;
 }
-export function directMove(branchId: string, hospital: string, from: string | null, to: string, reason: string, by: string) {
+export function directMove(branchId: string, hospital: string, from: string | null, to: string, reason: string, by: string, role: string) {
+  requireMarketingPermission(role, "marketing.hospitals.reassign");
   const t = addTransfer({ branchId, hospital, from, to, kind: "direct", reason, by, stage: "done" }, "Moved by the manager");
   finish(t, by);
   return t;
@@ -953,7 +971,8 @@ export function answerTransfer(id: string, accept: boolean, by: string, note: st
     finish(t, by);
   } else if (t.stage === "receiver") update(id, { stage: "manager" }, step(by, "Accepted the hospital", note));
 }
-export function decideTransfer(id: string, approve: boolean, by: string, note: string) {
+export function decideTransfer(id: string, approve: boolean, by: string, note: string, role: string) {
+  requireMarketingPermission(role, "marketing.transfers.decide");
   const t = current().transfers.find((x) => x.id === id);
   if (!t || t.stage !== "manager") return;
   update(id, { stage: approve ? "done" : "declined" }, step(by, approve ? "Approved by the manager" : "Not approved by the manager", note));
